@@ -157,7 +157,7 @@ def generate_oracle_targets(
     df_features,
     max_hold:   int   = 96,
     atr_period: int   = 14,
-    atr_mult:   float = 1.4,
+    atr_mult:   float = 5.5,
 ):
     print(f"Generating targets using Oracle 4.0  "
           f"[Wilder ATR({atr_period}), mult={atr_mult}, max_hold={max_hold}]...")

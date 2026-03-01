@@ -38,7 +38,7 @@ def evaluate_formula_with_vectorbt(gp_model, df_features_oos, df_raw_oos, entry_
     close_prices = df_raw_oos.loc[df_features_oos.index, 'close']
     
     # Calculate raw ATR% - using 2.0 to match the current pipeline config
-    atr_pct_raw = (atr / close_prices) * 1.4
+    atr_pct_raw = (atr / close_prices) * 5.5
     
     # A) Forward fill: Use the most recent valid ATR for subsequent NaNs
     atr_pct_series = atr_pct_raw.ffill()

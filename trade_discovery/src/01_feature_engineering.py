@@ -329,8 +329,8 @@ class OptimizedOrderBlockEngine:
         dist_supp = (result['close'] - result['SwingSupportTop']) / result['close']
         dist_res = (result['SwingResistanceBot'] - result['close']) / result['close']
         
-        result['DistSwingSuppPct'] = np.where(mask_swg_supp, dist_supp, 0.0)
-        result['DistSwingResPct'] = np.where(mask_swg_res, dist_res, 0.0)
+        result['DistSwingSuppPct'] = np.where(mask_swg_supp, dist_supp, self.missing_fill)
+        result['DistSwingResPct'] = np.where(mask_swg_res, dist_res, self.missing_fill)
         
         return result
 

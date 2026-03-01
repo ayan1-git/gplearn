@@ -7,7 +7,7 @@ from typing import Tuple
 
 # --- GLOBAL CONFIG ---
 ORACLE_MAX_HOLD = 96     # 48 hours at 30m bars
-ORACLE_ATR_MULT = 1.4   # Match this in 02_target_generator.py and 04_vectorbt_evaluator.py
+ORACLE_ATR_MULT = 5.5   # Match this in 02_target_generator.py and 04_vectorbt_evaluator.py
 
 # Using importlib to handle modules starting with digits
 fe = importlib.import_module("src.01_feature_engineering")
@@ -228,11 +228,10 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
         print("Winners appended to logfile.")
     else:
         print("No robust strategies found. Consider adjusting parameters or providing more data.")
- #test pu
 if __name__ == "__main__":
     setup_directories()
     # Fixed to match actual filename on disk as per previous conversation context
-    DATAPATH = "data/NIFTYNEXT50_30min_4Y.csv"
+    DATAPATH = "data/SENSEX_30min_4Y.csv"
     
 
     if not os.path.exists(DATAPATH):
