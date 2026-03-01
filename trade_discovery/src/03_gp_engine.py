@@ -1,0 +1,79 @@
+import numpy as np
+from gplearn.functions import make_function
+from gplearn.genetic import SymbolicRegressor
+
+# --- CUSTOM LOGICAL & COMPARISON OPERATORS ---
+# Return continuous approximations or relative comparisons 
+# instead of hard thresholding against 0.5
+
+def _gt(x1, x2):
+    return np.where(x1 > x2, 1.0, 0.0)
+
+def _lt(x1, x2):
+    return np.where(x1 < x2, 1.0, 0.0)
+
+def _eq(x1, x2):
+    # relative tolerance rather than absolute to handle arbitrary scales
+    return np.where(np.isclose(x1, x2, rtol=1e-05, atol=1e-08), 1.0, 0.0)
+
+def _and(x1, x2):
+    # Continuous proxy for AND: min or multiplication of positive signals
+    return np.minimum(x1, x2)
+
+def _or(x1, x2):
+    # Continuous proxy for OR: max
+    return np.maximum(x1, x2)
+
+def _if_then(condition, out_true, out_false):
+    # Condition relies on whether condition > 0, which provides a relative 
+    # zero-crossing boundary rather than an arbitrary 0.5
+    return np.where(condition > 0.0, out_true, out_false)
+
+# Registering functions for gplearn
+greater_than = make_function(function=_gt, name='gt', arity=2)
+less_than = make_function(function=_lt, name='lt', arity=2)
+equal_to = make_function(function=_eq, name='eq', arity=2)
+logical_and = make_function(function=_and, name='and', arity=2)
+logical_or = make_function(function=_or, name='or', arity=2)
+if_then = make_function(function=_if_then, name='if_then', arity=3)
+
+# Build the function set
+trading_functions = [
+    'add', 'sub', 'mul', 'div', 'max', 'min', 'abs', 'neg',
+    greater_than, less_than, equal_to, logical_and, logical_or, if_then
+]
+
+def train_gp_model(X_train, y_train):
+    """
+    X_train: float32 DataFrame of features
+    y_train: float32 Series of Oracle targets
+    """
+    print("Initializing GP Engine (8GB RAM Safe Mode)...")
+    
+    # Get feature names from the DataFrame columns
+    feature_names = list(X_train.columns)
+    
+    est_gp = SymbolicRegressor(
+        population_size=3000,
+        generations=60,
+        tournament_size=100,
+        p_crossover=0.6,
+        p_subtree_mutation=0.1,
+        p_hoist_mutation=0.1,
+        p_point_mutation=0.1,
+        max_samples=0.7,
+        parsimony_coefficient=0.005,
+        function_set=trading_functions,
+        init_depth=(3, 6),
+        metric='pearson', # Pearson is now safe with relative logic
+        feature_names=feature_names,
+        n_jobs=2,
+        verbose=1,
+        random_state=42
+    )
+    
+    print("Starting Evolution...")
+    est_gp.fit(X_train.values, y_train.values)
+    print("\nBest Formula Found:")
+    print(est_gp._program)
+    return est_gp

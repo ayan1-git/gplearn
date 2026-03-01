@@ -1,0 +1,34 @@
+# Virtual Environment
+trade_discovery/venv/
+venv/
+ENV/
+env/
+
+# Python Cache
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Data Files
+trade_discovery/data/*.csv
+trade_discovery/data/*.parquet
+trade_discovery/data/*.pkl
+trade_discovery/data/*.h5
+*.csv
+*.parquet
+*.pkl
+*.h5
+
+# Outputs
+trade_discovery/outputs/
+outputs/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
