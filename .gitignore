@@ -24,7 +24,6 @@ trade_discovery/outputs/
 outputs/
 
 # IDEs
-.vscode/
 .idea/
 *.swp
 *.swo
