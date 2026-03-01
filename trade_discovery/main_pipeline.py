@@ -243,3 +243,4 @@ if __name__ == "__main__":
         walk_forward_optimization(df_raw, df_features, y_targets, train_months=30, test_months=6, data_path=DATAPATH)
     except Exception as e:
         print(f"Pipeline crashed: {e}")
+
