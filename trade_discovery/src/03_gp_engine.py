@@ -58,6 +58,7 @@ STD_FLOOR = 1e-6
 PF_SMOOTH_K = 1e-2
 PF_MAX = 500.0
 SHARPE_LAMBDA = 0.05
+RETURN_LAMBDA = 10.0  # Encourage magnitude of captured returns
 
 def _pf_sharpe_fitness(y, y_pred, w):
     y = np.asarray(y, dtype=np.float32)
@@ -92,8 +93,12 @@ def _pf_sharpe_fitness(y, y_pred, w):
 
     mean = float(np.mean(captured))
     sharpe = mean / (std + EPS)
+    
+    # Raw cumulative return proxy
+    tot_ret = float(captured.sum())
 
-    return float(np.log(pf) + SHARPE_LAMBDA * sharpe)
+    # Multi-objective: Log(PF) for quality, Sharpe for risk, tot_ret for magnitude
+    return float(np.log(pf) + (SHARPE_LAMBDA * sharpe) + (RETURN_LAMBDA * tot_ret))
 
 pf_sharpe_metric = make_fitness(function=_pf_sharpe_fitness, greater_is_better=True)
 
@@ -108,17 +113,18 @@ def train_gp_model(X_train, y_train):
     feature_names = list(X_train.columns)
     
     est_gp = SymbolicRegressor(
-        population_size=3000,
-        generations=60,
-        tournament_size=100,
-        p_crossover=0.6,
+        population_size=5000,
+        generations=40,
+        tournament_size=50,
+        p_crossover=0.7,
         p_subtree_mutation=0.1,
-        p_hoist_mutation=0.1,
+        p_hoist_mutation=0.05,
         p_point_mutation=0.1,
-        max_samples=0.7,
-        parsimony_coefficient=0.005,
+        max_samples=0.9,
+        stopping_criteria=100.0,
+        parsimony_coefficient=0.001,
         function_set=trading_functions,
-        init_depth=(3, 6),
+        init_depth=(4, 10),
         metric=pf_sharpe_metric,
         feature_names=feature_names,
         n_jobs=2,
