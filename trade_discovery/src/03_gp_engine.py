@@ -120,11 +120,11 @@ def train_gp_model(X_train, y_train):
         p_subtree_mutation=0.1,
         p_hoist_mutation=0.05,
         p_point_mutation=0.1,
-        max_samples=0.9,
+        max_samples=0.7,             # Reduced to prevent overfitting and massive programs
         stopping_criteria=100.0,
-        parsimony_coefficient=0.001,
+        parsimony_coefficient=0.05,   # Significantly increased to penalize length
         function_set=trading_functions,
-        init_depth=(4, 10),
+        init_depth=(2, 6),            # Scaled back initial complexity
         metric=pf_sharpe_metric,
         feature_names=feature_names,
         n_jobs=2,
