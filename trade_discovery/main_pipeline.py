@@ -185,7 +185,7 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
         if pd.isna(sharpe): sharpe = 0
 
         # 3. Survival Criteria
-        if total_return > 20 and sharpe > 0.5:
+        if total_return > 20 and sharpe > 1:
             print(f"-> SUCCESS! Formula survived OOS. Return: {total_return:.2f}%, Sharpe: {sharpe:.2f}")
             winning_formulas.append({
                 'fold': fold,
