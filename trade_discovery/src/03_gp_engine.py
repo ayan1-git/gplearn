@@ -124,7 +124,7 @@ def train_gp_model(X_train, y_train):
         stopping_criteria=100.0,
         parsimony_coefficient=0.09,   # Significantly increased to penalize length
         function_set=trading_functions,
-        init_depth=(1, 6),            # Scaled back initial complexity
+        init_depth=(1, 4),            # Scaled back initial complexity
         metric=pf_sharpe_metric,
         feature_names=feature_names,
         n_jobs=2,
