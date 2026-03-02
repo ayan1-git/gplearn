@@ -5,5 +5,5 @@
     "gitdoc.autoPull": "off",
     "gitdoc.autoCommitDelay": 3000,
     "gitdoc.autoPullDelay": 3000,
-    "gitdoc.autoPushDelay": 60000
+    "gitdoc.autoPushDelay": 80000
 }
