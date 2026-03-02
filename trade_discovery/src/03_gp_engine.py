@@ -56,7 +56,7 @@ MIN_TRADES = 12
 EPS = 1e-8
 STD_FLOOR = 1e-6
 PF_SMOOTH_K = 1e-2
-PF_MAX = 20.0
+PF_MAX = .0
 SHARPE_LAMBDA = 0.05
 
 def _pf_sharpe_fitness(y, y_pred, w):
