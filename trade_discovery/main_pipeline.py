@@ -7,7 +7,7 @@ from typing import Tuple
   
 # --- GLOBAL CONFIG ---
 ORACLE_MAX_HOLD = 96     # 48 hours at 30m bars
-ORACLE_ATR_MULT = 2.6   # Match this in 02_target_generator.py and 04_vectorbt_evaluator.py
+ORACLE_ATR_MULT =    # Match this in 02_target_generator.py and 04_vectorbt_evaluator.py
 FEE_PER_SIDE = 0.0003
 SLIPPAGE = 0.0001
 
