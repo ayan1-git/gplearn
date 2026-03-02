@@ -47,8 +47,8 @@ trading_functions = [
 # ---------------------------------------------------------------------
 # PF-dominant composite fitness (sniper-friendly, flat=neutral)
 # ---------------------------------------------------------------------
-ENTRY_PCT = 90
-EXIT_PCT = 10
+ENTRY_PCT = 70
+EXIT_PCT = 30
 MIN_LONG = 3
 MIN_SHORT = 3
 MIN_TRADES = 12
