@@ -157,7 +157,7 @@ def generate_oracle_targets(
     df_features,
     max_hold:   int   = 96,
     atr_period: int   = 14,
-    atr_mult:   float = 3.7,
+    atr_mult:   float = 2.7,
     fee_per_side: float = 0.0003,
     slippage:     float = 0.0001,
 ):
