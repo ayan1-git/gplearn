@@ -238,7 +238,7 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
 if __name__ == "__main__":
     setup_directories()
     # Fixed to match actual filename on disk as per previous conversation context
-    DATAPATH = "trade_discovery/data/Nifty-30min-4year(in).csv"
+    DATAPATH = "data/Nifty-30min-4year(in).csv"
     
 
     if not os.path.exists(DATAPATH):
