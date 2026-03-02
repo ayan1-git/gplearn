@@ -4,10 +4,12 @@ import os
 import gc
 import importlib
 from typing import Tuple
-
+  
 # --- GLOBAL CONFIG ---
 ORACLE_MAX_HOLD = 96     # 48 hours at 30m bars
-ORACLE_ATR_MULT = 5.5   # Match this in 02_target_generator.py and 04_vectorbt_evaluator.py
+ORACLE_ATR_MULT = 2.6   # Match this in 02_target_generator.py and 04_vectorbt_evaluator.py
+FEE_PER_SIDE = 0.0003
+SLIPPAGE = 0.0001
 
 # Using importlib to handle modules starting with digits
 fe = importlib.import_module("src.01_feature_engineering")
@@ -49,7 +51,11 @@ def load_and_prepare_data(filepath):
     print(f"Features ready. Columns: {list(df_features.columns)}")
 
     df_features, y_targets = generate_oracle_targets(
-        df_raw, df_features, max_hold=ORACLE_MAX_HOLD, atr_mult=ORACLE_ATR_MULT
+        df_raw, df_features, 
+        max_hold=ORACLE_MAX_HOLD, 
+        atr_mult=ORACLE_ATR_MULT,
+        fee_per_side=FEE_PER_SIDE,
+        slippage=SLIPPAGE
     )
 
     df_raw = df_raw.loc[df_features.index]
@@ -168,7 +174,8 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
 
         # 2. Evaluate OOS
         portfolio, stats = evaluate_formula_with_vectorbt(
-            gp_model, X_test, raw_test, entry_pct, exit_pct
+            gp_model, X_test, raw_test, entry_pct, exit_pct,
+            fees=FEE_PER_SIDE, slippage=SLIPPAGE
         )
 
         total_return = stats.get('Total Return [%]', 0)

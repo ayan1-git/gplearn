@@ -2,7 +2,10 @@ import vectorbt as vbt
 import pandas as pd
 import numpy as np
 
-def evaluate_formula_with_vectorbt(gp_model, df_features_oos, df_raw_oos, entry_pct, exit_pct):
+def evaluate_formula_with_vectorbt(
+    gp_model, df_features_oos, df_raw_oos, entry_pct, exit_pct,
+    fees: float = 0.0003, slippage: float = 0.0001
+):
     """
     Evaluates the GP formula out-of-sample using VectorBT.
     Now correctly handles Long/Short symmetry and ATR-based dynamic trailing stops.
@@ -38,7 +41,7 @@ def evaluate_formula_with_vectorbt(gp_model, df_features_oos, df_raw_oos, entry_
     close_prices = df_raw_oos.loc[df_features_oos.index, 'close']
     
     # Calculate raw ATR% - using 2.0 to match the current pipeline config
-    atr_pct_raw = (atr / close_prices) * 5.5
+    atr_pct_raw = (atr / close_prices) * 2.6
     
     # A) Forward fill: Use the most recent valid ATR for subsequent NaNs
     atr_pct_series = atr_pct_raw.ffill()
@@ -58,8 +61,8 @@ def evaluate_formula_with_vectorbt(gp_model, df_features_oos, df_raw_oos, entry_
         exits=exits_series,                  # Close Long (when Short triggers)
         short_entries=short_entries_series,  # Open Short
         short_exits=short_exits_series,      # Close Short (when Long triggers)
-        fees=0.0003,                         # Realistic 3 bps transaction fee
-        slippage=0.0001,                     # 1 bps slippage
+        fees=fees,                           # Realistic transaction fee
+        slippage=slippage,                   # Slippage
         sl_stop=atr_pct_series,              # Dynamic ATR% trailing stop
         sl_trail=True,                       # Trailing behavior enabled
         freq='30min'

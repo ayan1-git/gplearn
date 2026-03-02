@@ -1,6 +1,7 @@
 import numpy as np
 from gplearn.functions import make_function
 from gplearn.genetic import SymbolicRegressor
+from gplearn.fitness import make_fitness
 
 # --- CUSTOM LOGICAL & COMPARISON OPERATORS ---
 # Return continuous approximations or relative comparisons 
@@ -43,6 +44,59 @@ trading_functions = [
     greater_than, less_than, equal_to, logical_and, logical_or, if_then
 ]
 
+# ---------------------------------------------------------------------
+# PF-dominant composite fitness (sniper-friendly, flat=neutral)
+# ---------------------------------------------------------------------
+ENTRY_PCT = 90
+EXIT_PCT = 10
+MIN_LONG = 3
+MIN_SHORT = 3
+MIN_TRADES = 12
+
+EPS = 1e-8
+STD_FLOOR = 1e-6
+PF_SMOOTH_K = 1e-2
+PF_MAX = 20.0
+SHARPE_LAMBDA = 0.05
+
+def _pf_sharpe_fitness(y, y_pred, w):
+    y = np.asarray(y, dtype=np.float32)
+    y_pred = np.asarray(y_pred, dtype=np.float32)
+
+    buy = np.percentile(y_pred, ENTRY_PCT)
+    sell = np.percentile(y_pred, EXIT_PCT)
+
+    signal = np.zeros_like(y_pred, dtype=np.float32)
+    long_mask = y_pred > buy
+    short_mask = y_pred < sell
+    signal[long_mask] = 1.0
+    signal[short_mask] = -1.0
+
+    n_long = int(long_mask.sum())
+    n_short = int(short_mask.sum())
+    if (n_long < MIN_LONG) or (n_short < MIN_SHORT) or ((n_long + n_short) < MIN_TRADES):
+        return 0.0
+
+    captured = signal * y
+    std = float(np.std(captured))
+    if std < STD_FLOOR:
+        return 0.0
+
+    pos = captured[captured > 0]
+    neg = captured[captured < 0]
+    gross_profit = float(pos.sum()) if pos.size else 0.0
+    gross_loss = float((-neg).sum()) if neg.size else 0.0
+
+    pf = (gross_profit + PF_SMOOTH_K) / (gross_loss + PF_SMOOTH_K)
+    pf = min(max(pf, 1e-6), PF_MAX)
+
+    mean = float(np.mean(captured))
+    sharpe = mean / (std + EPS)
+
+    return float(np.log(pf) + SHARPE_LAMBDA * sharpe)
+
+pf_sharpe_metric = make_fitness(function=_pf_sharpe_fitness, greater_is_better=True)
+
 def train_gp_model(X_train, y_train):
     """
     X_train: float32 DataFrame of features
@@ -65,7 +119,7 @@ def train_gp_model(X_train, y_train):
         parsimony_coefficient=0.005,
         function_set=trading_functions,
         init_depth=(3, 6),
-        metric='pearson', # Pearson is now safe with relative logic
+        metric=pf_sharpe_metric,
         feature_names=feature_names,
         n_jobs=2,
         verbose=1,

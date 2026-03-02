@@ -153,14 +153,17 @@ def run_oracle_scoring(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def generate_oracle_targets(
-    df_raw,
+    df_raw, 
     df_features,
     max_hold:   int   = 96,
     atr_period: int   = 14,
-    atr_mult:   float = 5.5,
+    atr_mult:   float = 2.6,
+    fee_per_side: float = 0.0003,
+    slippage:     float = 0.0001,
 ):
     print(f"Generating targets using Oracle 4.0  "
-          f"[Wilder ATR({atr_period}), mult={atr_mult}, max_hold={max_hold}]...")
+          f"[Wilder ATR({atr_period}), mult={atr_mult}, max_hold={max_hold}, "
+          f"fee_per_side={fee_per_side}, slippage={slippage}]...")
 
     # Step 1: Compute Wilder ATR in float64
     atr = _compute_wilder_atr(df_raw, period=atr_period)
@@ -182,8 +185,8 @@ def generate_oracle_targets(
         df_raw_valid['close'].values.astype(np.float32),
         atr_valid.values.astype(np.float32),
         np.int64(max_hold),
-        np.float32(0.0004), # fee_per_side
-        np.float32(0.0003), # slippage
+        np.float32(fee_per_side),
+        np.float32(slippage),
         np.float32(atr_mult),
         np.float32(2.0),    # saturation_factor
         np.float32(0.25)    # mae_penalty
