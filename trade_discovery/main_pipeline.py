@@ -8,7 +8,8 @@ from typing import Tuple
 # --- GLOBAL CONFIG ---
 from src.config import (
     ORACLE_MAX_HOLD, ORACLE_ATR_MULT, FEE_PER_SIDE, SLIPPAGE, 
-    OB_ATR_MULT, TRAIN_MONTHS, TEST_MONTHS, DATAPATH
+    OB_ATR_MULT, TRAIN_MONTHS, TEST_MONTHS, DATAPATH,
+    ENTRY_PCT, EXIT_PCT
 )
 
 # Using importlib to handle modules starting with digits
@@ -167,8 +168,8 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
             train_signals_sorted = np.sort(train_signals)  # sorted train distribution
 
             # These are still logged for reference
-            entry_pct = np.percentile(train_signals, 90)
-            exit_pct  = np.percentile(train_signals, 10)
+            entry_pct = np.percentile(train_signals, ENTRY_PCT)
+            exit_pct  = np.percentile(train_signals, EXIT_PCT)
             print(f"-> Training Thresholds | Buy: {entry_pct:.4f}, Sell: {exit_pct:.4f}")
             print(f"-> Train signal range  | Min: {train_signals.min():.4f}, Max: {train_signals.max():.4f}")
 
@@ -177,7 +178,7 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
             break
 
         # 2. Evaluate OOS
-        portfolio, stats = evaluate_formula_with_vectorbt(
+        portfolio, stats, metadata = evaluate_formula_with_vectorbt(
             gp_model, X_test, raw_test, train_signals_sorted,
             fees=FEE_PER_SIDE, slippage=SLIPPAGE
         )
@@ -196,8 +197,16 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
                 'formula': formula_str,
                 'return_pct': float(total_return),
                 'sharpe': float(sharpe),
+                'max_dd': float(stats.get('Max Drawdown [%]', 0)),
+                'win_rate': float(stats.get('Win Rate [%]', 0)),
+                'total_trades': int(stats.get('Total Trades', 0)),
                 'buy_threshold': float(entry_pct),
-                'sell_threshold': float(exit_pct)
+                'sell_threshold': float(exit_pct),
+                'train_min': float(train_signals.min()),
+                'train_max': float(train_signals.max()),
+                'n_long': metadata['n_long'],
+                'n_short': metadata['n_short'],
+                'coverage_pct': metadata['coverage_pct']
             })
 
             if hasattr(stats, 'to_frame'):
@@ -233,9 +242,12 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
             f.write(f"Parameters: ATR_MULT={ORACLE_ATR_MULT}, MAX_HOLD={ORACLE_MAX_HOLD}\n")
             f.write("-" * 60 + "\n")
             for w in winning_formulas:
-                f.write(f"Fold {w['fold']} | Ret: {w['return_pct']:.2f}% | Sharpe: {w['sharpe']:.2f}\n")
-                f.write(f"Thresholds: Buy>{w['buy_threshold']:.4f}, Sell<{w['sell_threshold']:.4f}\n")
-                f.write(f"Logic: {w['formula']}\n\n")
+                f.write(f"Fold {w['fold']} | OOS Results:\n")
+                f.write(f"  Return: {w['return_pct']:.2f}% | Sharpe: {w['sharpe']:.2f} | MaxDD: {w['max_dd']:.2f}% | WinRate: {w['win_rate']:.2f}%\n")
+                f.write(f"  Trades: {w['total_trades']} | Coverage: {w['coverage_pct']:.1f}% (L:{w['n_long']}, S:{w['n_short']})\n")
+                f.write(f"  Train Thresholds | Buy>{w['buy_threshold']:.4f}, Sell<{w['sell_threshold']:.4f}\n")
+                f.write(f"  Train Signal Range | Min:{w['train_min']:.4f}, Max:{w['train_max']:.4f}\n")
+                f.write(f"  Logic: {w['formula']}\n\n")
         print("Winners appended to logfile.")
     else:
         print("No robust strategies found. Consider adjusting parameters or providing more data.")

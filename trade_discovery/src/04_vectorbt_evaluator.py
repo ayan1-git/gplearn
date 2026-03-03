@@ -1,11 +1,18 @@
 import vectorbt as vbt
 import pandas as pd
 import numpy as np
+import importlib
+try:
+    config = importlib.import_module("src.config")
+    DEFAULT_LONG_PCT = config.ENTRY_PCT / 100.0
+    DEFAULT_SHORT_PCT = config.EXIT_PCT / 100.0
+except (ImportError, AttributeError):
+    DEFAULT_LONG_PCT, DEFAULT_SHORT_PCT = 0.80, 0.20
 
 def evaluate_formula_with_vectorbt(
     gp_model, df_features_oos, df_raw_oos, train_signals_sorted,
     fees: float = 0.0003, slippage: float = 0.0001,
-    long_pct: float = 0.90, short_pct: float = 0.10
+    long_pct: float = DEFAULT_LONG_PCT, short_pct: float = DEFAULT_SHORT_PCT
 ):
     """
     Evaluates the GP formula out-of-sample using VectorBT.
@@ -76,4 +83,10 @@ def evaluate_formula_with_vectorbt(
     print("\n--- Out-of-Sample Results ---")
     print(stats[['Total Return [%]', 'Max Drawdown [%]', 'Win Rate [%]', 'Sharpe Ratio']])
 
-    return portfolio, stats
+    metadata = {
+        'n_long': int(n_long),
+        'n_short': int(n_short),
+        'coverage_pct': float(coverage)
+    }
+
+    return portfolio, stats, metadata

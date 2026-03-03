@@ -45,20 +45,28 @@ trading_functions = [
 ]
 
 # ---------------------------------------------------------------------
-# PF-dominant composite fitness (sniper-friendly, flat=neutral)
+# CONFIG LOADING
 # ---------------------------------------------------------------------
-ENTRY_PCT = 70
-EXIT_PCT = 30
-MIN_LONG = 3
-MIN_SHORT = 3
-MIN_TRADES = 12
-
-EPS = 1e-8
-STD_FLOOR = 1e-6
-PF_SMOOTH_K = 1e-2
-PF_MAX = 500.0
-SHARPE_LAMBDA = 0.05
-RETURN_LAMBDA = 10.0  # Encourage magnitude of captured returns
+import importlib
+try:
+    config = importlib.import_module("src.config")
+    ENTRY_PCT = config.ENTRY_PCT
+    EXIT_PCT = config.EXIT_PCT
+    MIN_LONG = config.MIN_LONG
+    MIN_SHORT = config.MIN_SHORT
+    MIN_TRADES = config.MIN_TRADES
+    EPS = config.EPS
+    STD_FLOOR = config.STD_FLOOR
+    PF_SMOOTH_K = config.PF_SMOOTH_K
+    PF_MAX = config.PF_MAX
+    SHARPE_LAMBDA = config.SHARPE_LAMBDA
+    RETURN_LAMBDA = config.RETURN_LAMBDA
+except (ImportError, AttributeError):
+    # Fallbacks for robustness
+    ENTRY_PCT, EXIT_PCT = 80, 20
+    MIN_LONG, MIN_SHORT, MIN_TRADES = 3, 3, 12
+    EPS, STD_FLOOR, PF_SMOOTH_K, PF_MAX = 1e-8, 1e-6, 1e-2, 500.0
+    SHARPE_LAMBDA, RETURN_LAMBDA = 0.05, 10.0
 
 def _pf_sharpe_fitness(y, y_pred, w):
     y = np.asarray(y, dtype=np.float32)
