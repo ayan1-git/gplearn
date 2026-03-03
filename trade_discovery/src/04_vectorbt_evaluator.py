@@ -6,24 +6,33 @@ def evaluate_formula_with_vectorbt(
     gp_model, 
     df_features_oos, 
     df_raw_oos, 
-    entry_threshold: float,
-    exit_threshold: float,
+    long_pct_threshold: float,
+    short_pct_threshold: float,
     fees: float = 0.0003, 
-    slippage: float = 0.0001
+    slippage: float = 0.0001,
+    rolling_window: int = 500  # e.g., ~2 weeks of 30min bars
 ):
     """
-    Evaluates the GP formula out-of-sample using VectorBT.
-    
-    Uses absolute thresholds calculated strictly from the training distribution 
-    to prevent data leakage and guarantee consistency between backtest and live execution.
+    Evaluates GP formula using a CAUSAL rolling rank.
+    Prevents both Distribution Shift (by adapting to recent regime)
+    and Lookahead Bias (by only ranking against past bars, not future OOS bars).
     """
     print("Predicting signals on Out-of-Sample data...")
     raw_signals = gp_model.predict(df_features_oos.values)
+    signals_series = pd.Series(raw_signals, index=df_features_oos.index)
 
-    # ── FIXED: Direct Absolute Thresholding ──
-    # Uses the exact cutoff values computed from the training fold pipeline.
-    long_entries  = raw_signals > entry_threshold
-    short_entries = raw_signals < exit_threshold
+    # ── THE FIX: Causal Rolling Percentile ──
+    # Rank today's signal against the LAST `rolling_window` bars only.
+    # pct=True returns a value between 0.0 and 1.0
+    rolling_ranks = signals_series.rolling(window=rolling_window, min_periods=50).rank(pct=True)
+    
+    # Fill the initial warm-up period by ranking against whatever we have so far (expanding)
+    expanding_ranks = signals_series.expanding(min_periods=1).rank(pct=True)
+    causal_ranks = rolling_ranks.fillna(expanding_ranks)
+
+    # Trade if the current bar is in the top/bottom X% of RECENT history
+    long_entries  = causal_ranks > (long_pct_threshold / 100.0)    # e.g. > 0.80
+    short_entries = causal_ranks < (short_pct_threshold / 100.0)   # e.g. < 0.20
 
     n_long  = long_entries.sum()
     n_short = short_entries.sum()
@@ -31,12 +40,10 @@ def evaluate_formula_with_vectorbt(
     print(f"-> OOS Signal Coverage | Longs: {n_long} | Shorts: {n_short} | Total: {coverage:.1f}% of bars")
 
     if n_long == 0 and n_short == 0:
-        print("-> WARNING: Formula produced ZERO signals in OOS. Regime likely changed. Fold will fail survival gate.")
+        print("-> WARNING: Formula produced ZERO signals in OOS. Regime likely changed.")
 
     entries_series       = pd.Series(long_entries,  index=df_features_oos.index)
     short_entries_series = pd.Series(short_entries, index=df_features_oos.index)
-
-    # Reversal logic: long entry closes short, short entry closes long
     exits_series       = short_entries_series
     short_exits_series = entries_series
 
@@ -48,7 +55,6 @@ def evaluate_formula_with_vectorbt(
 
     atr_series = true_range.ewm(alpha=1.0/14, adjust=False, min_periods=14).mean()
     atr        = atr_series.reindex(df_features_oos.index)
-
     close_prices = df_raw_oos.loc[df_features_oos.index, 'close']
 
     from src.config import ORACLE_ATR_MULT          # single source of truth

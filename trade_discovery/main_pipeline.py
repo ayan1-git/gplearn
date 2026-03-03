@@ -165,12 +165,6 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
             formula_str = str(gp_model._program)
 
             train_signals = gp_model.predict(X_train.values)
-            
-            # --- FIX: Compute concrete threshold values exactly ONCE based on training data ---
-            entry_threshold = float(np.percentile(train_signals, ENTRY_PCT))
-            exit_threshold  = float(np.percentile(train_signals, EXIT_PCT))
-
-            print(f"-> Training Thresholds | Buy (>{ENTRY_PCT}%): {entry_threshold:.4f}, Sell (<{EXIT_PCT}%): {exit_threshold:.4f}")
             print(f"-> Train signal range  | Min: {train_signals.min():.4f}, Max: {train_signals.max():.4f}")
 
         except Exception as e:
@@ -178,13 +172,14 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
             break
 
         # 2. Evaluate OOS
-        # --- FIX: Pass absolute threshold limits to evaluator, dropping rank-based leakage risk ---
+        # Pass the config percentages directly. The evaluator will apply them 
+        # CAUSALLY to a rolling window of the signals.
         portfolio, stats, metadata = evaluate_formula_with_vectorbt(
             gp_model=gp_model, 
             df_features_oos=X_test, 
             df_raw_oos=raw_test, 
-            entry_threshold=entry_threshold,
-            exit_threshold=exit_threshold,
+            long_pct_threshold=ENTRY_PCT,
+            short_pct_threshold=EXIT_PCT,
             fees=FEE_PER_SIDE, 
             slippage=SLIPPAGE
         )
@@ -206,8 +201,8 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
                 'max_dd': float(stats.get('Max Drawdown [%]', 0)),
                 'win_rate': float(stats.get('Win Rate [%]', 0)),
                 'total_trades': int(stats.get('Total Trades', 0)),
-                'buy_threshold': entry_threshold,
-                'sell_threshold': exit_threshold,
+                'buy_threshold': float(ENTRY_PCT),
+                'sell_threshold': float(EXIT_PCT),
                 'train_min': float(train_signals.min()),
                 'train_max': float(train_signals.max()),
                 'n_long': metadata['n_long'],
@@ -251,7 +246,7 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
                 f.write(f"Fold {w['fold']} | OOS Results:\n")
                 f.write(f"  Return: {w['return_pct']:.2f}% | Sharpe: {w['sharpe']:.2f} | MaxDD: {w['max_dd']:.2f}% | WinRate: {w['win_rate']:.2f}%\n")
                 f.write(f"  Trades: {w['total_trades']} | Coverage: {w['coverage_pct']:.1f}% (L:{w['n_long']}, S:{w['n_short']})\n")
-                f.write(f"  Train Thresholds | Buy>{w['buy_threshold']:.4f}, Sell<{w['sell_threshold']:.4f}\n")
+                f.write(f"  Rank Percentiles | Buy>{w['buy_threshold']:.0f}% | Sell<{w['sell_threshold']:.0f}%\n")
                 f.write(f"  Train Signal Range | Min:{w['train_min']:.4f}, Max:{w['train_max']:.4f}\n")
                 f.write(f"  Logic: {w['formula']}\n\n")
         print("Winners appended to logfile.")
