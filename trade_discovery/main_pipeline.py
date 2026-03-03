@@ -165,12 +165,12 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
             formula_str = str(gp_model._program)
 
             train_signals = gp_model.predict(X_train.values)
-            train_signals_sorted = np.sort(train_signals)  # sorted train distribution
+            
+            # --- FIX: Compute concrete threshold values exactly ONCE based on training data ---
+            entry_threshold = float(np.percentile(train_signals, ENTRY_PCT))
+            exit_threshold  = float(np.percentile(train_signals, EXIT_PCT))
 
-            # These are still logged for reference
-            entry_pct = np.percentile(train_signals, ENTRY_PCT)
-            exit_pct  = np.percentile(train_signals, EXIT_PCT)
-            print(f"-> Training Thresholds | Buy: {entry_pct:.4f}, Sell: {exit_pct:.4f}")
+            print(f"-> Training Thresholds | Buy (>{ENTRY_PCT}%): {entry_threshold:.4f}, Sell (<{EXIT_PCT}%): {exit_threshold:.4f}")
             print(f"-> Train signal range  | Min: {train_signals.min():.4f}, Max: {train_signals.max():.4f}")
 
         except Exception as e:
@@ -178,9 +178,15 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
             break
 
         # 2. Evaluate OOS
+        # --- FIX: Pass absolute threshold limits to evaluator, dropping rank-based leakage risk ---
         portfolio, stats, metadata = evaluate_formula_with_vectorbt(
-            gp_model, X_test, raw_test, train_signals_sorted,
-            fees=FEE_PER_SIDE, slippage=SLIPPAGE
+            gp_model=gp_model, 
+            df_features_oos=X_test, 
+            df_raw_oos=raw_test, 
+            entry_threshold=entry_threshold,
+            exit_threshold=exit_threshold,
+            fees=FEE_PER_SIDE, 
+            slippage=SLIPPAGE
         )
 
         total_return = stats.get('Total Return [%]', 0)
@@ -200,8 +206,8 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
                 'max_dd': float(stats.get('Max Drawdown [%]', 0)),
                 'win_rate': float(stats.get('Win Rate [%]', 0)),
                 'total_trades': int(stats.get('Total Trades', 0)),
-                'buy_threshold': float(entry_pct),
-                'sell_threshold': float(exit_pct),
+                'buy_threshold': entry_threshold,
+                'sell_threshold': exit_threshold,
                 'train_min': float(train_signals.min()),
                 'train_max': float(train_signals.max()),
                 'n_long': metadata['n_long'],
@@ -251,6 +257,7 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
         print("Winners appended to logfile.")
     else:
         print("No robust strategies found. Consider adjusting parameters or providing more data.")
+
 if __name__ == "__main__":
     setup_directories()
     
@@ -266,5 +273,3 @@ if __name__ == "__main__":
         )
     except Exception as e:
         print(f"Pipeline crashed: {e}")
-
-# auto-commit test

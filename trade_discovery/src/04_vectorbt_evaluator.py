@@ -1,39 +1,29 @@
 import vectorbt as vbt
 import pandas as pd
 import numpy as np
-import importlib
-try:
-    config = importlib.import_module("src.config")
-    DEFAULT_LONG_PCT = config.ENTRY_PCT / 100.0
-    DEFAULT_SHORT_PCT = config.EXIT_PCT / 100.0
-except (ImportError, AttributeError):
-    DEFAULT_LONG_PCT, DEFAULT_SHORT_PCT = 0.80, 0.20
 
 def evaluate_formula_with_vectorbt(
-    gp_model, df_features_oos, df_raw_oos, train_signals_sorted,
-    fees: float = 0.0003, slippage: float = 0.0001,
-    long_pct: float = DEFAULT_LONG_PCT, short_pct: float = DEFAULT_SHORT_PCT
+    gp_model, 
+    df_features_oos, 
+    df_raw_oos, 
+    entry_threshold: float,
+    exit_threshold: float,
+    fees: float = 0.0003, 
+    slippage: float = 0.0001
 ):
     """
     Evaluates the GP formula out-of-sample using VectorBT.
     
-    Option B — Train-Calibrated Ranks:
-    Each OOS signal is ranked against the TRAINING distribution.
-    A signal must be in the top X% of training values to trigger a long,
-    and bottom X% to trigger a short. If market regime changes, the formula
-    fires fewer signals — which is the honest and correct behaviour.
+    Uses absolute thresholds calculated strictly from the training distribution 
+    to prevent data leakage and guarantee consistency between backtest and live execution.
     """
     print("Predicting signals on Out-of-Sample data...")
     raw_signals = gp_model.predict(df_features_oos.values)
 
-    # ── OPTION B CORE: rank each OOS value within the training distribution ──
-    # searchsorted finds where each OOS signal would sit in sorted train array.
-    # Dividing by train length converts position → percentile rank (0.0 to 1.0).
-    n_train = len(train_signals_sorted)
-    oos_ranks_in_train = np.searchsorted(train_signals_sorted, raw_signals) / n_train
-
-    long_entries  = oos_ranks_in_train > long_pct   # top 10% of training range
-    short_entries = oos_ranks_in_train < short_pct  # bottom 10% of training range
+    # ── FIXED: Direct Absolute Thresholding ──
+    # Uses the exact cutoff values computed from the training fold pipeline.
+    long_entries  = raw_signals > entry_threshold
+    short_entries = raw_signals < exit_threshold
 
     n_long  = long_entries.sum()
     n_short = short_entries.sum()
