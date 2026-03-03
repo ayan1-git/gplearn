@@ -6,10 +6,10 @@ import importlib
 from typing import Tuple
   
 # --- GLOBAL CONFIG ---
-ORACLE_MAX_HOLD = 96     # 48 hours at 30m bars
-ORACLE_ATR_MULT = 3.4  # Match this in 02_target_generator.py and 04_vectorbt_evaluator.py
-FEE_PER_SIDE = 0.0003
-SLIPPAGE = 0.0001
+from src.config import (
+    ORACLE_MAX_HOLD, ORACLE_ATR_MULT, FEE_PER_SIDE, SLIPPAGE, 
+    OB_ATR_MULT, TRAIN_MONTHS, TEST_MONTHS, DATAPATH
+)
 
 # Using importlib to handle modules starting with digits
 fe = importlib.import_module("src.01_feature_engineering")
@@ -45,6 +45,7 @@ def load_and_prepare_data(filepath):
         mds_fast_window=5,
         mds_slow_window=30,
         vol_asym_window=20,
+        ob_atr_mult=OB_ATR_MULT,
     )
     
     df_features = calculate_features(df_raw, **feature_kwargs)
@@ -163,10 +164,13 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
             formula_str = str(gp_model._program)
 
             train_signals = gp_model.predict(X_train.values)
+            train_signals_sorted = np.sort(train_signals)  # sorted train distribution
+
+            # These are still logged for reference
             entry_pct = np.percentile(train_signals, 90)
-            exit_pct = np.percentile(train_signals, 10)
-            
+            exit_pct  = np.percentile(train_signals, 10)
             print(f"-> Training Thresholds | Buy: {entry_pct:.4f}, Sell: {exit_pct:.4f}")
+            print(f"-> Train signal range  | Min: {train_signals.min():.4f}, Max: {train_signals.max():.4f}")
 
         except Exception as e:
             print(f"GP Training failed on Fold {fold}: {e}")
@@ -174,7 +178,7 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
 
         # 2. Evaluate OOS
         portfolio, stats = evaluate_formula_with_vectorbt(
-            gp_model, X_test, raw_test, entry_pct, exit_pct,
+            gp_model, X_test, raw_test, train_signals_sorted,
             fees=FEE_PER_SIDE, slippage=SLIPPAGE
         )
 
@@ -237,16 +241,17 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
         print("No robust strategies found. Consider adjusting parameters or providing more data.")
 if __name__ == "__main__":
     setup_directories()
-    # Fixed to match actual filename on disk as per previous conversation context
-    DATAPATH = "data/NIFTYNEXT50_30min_4Y.csv"
     
-
     if not os.path.exists(DATAPATH):
         raise FileNotFoundError(f"CRITICAL ERROR: Data file not found at {DATAPATH}. Please check your filename and directory.")
 
     try:
         df_raw, df_features, y_targets = load_and_prepare_data(DATAPATH)
-        walk_forward_optimization(df_raw, df_features, y_targets, train_months=30, test_months=6, data_path=DATAPATH)
+        walk_forward_optimization(
+            df_raw, df_features, y_targets, 
+            train_months=TRAIN_MONTHS, test_months=TEST_MONTHS, 
+            data_path=DATAPATH
+        )
     except Exception as e:
         print(f"Pipeline crashed: {e}")
 

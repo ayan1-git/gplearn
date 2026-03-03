@@ -7,6 +7,12 @@ from collections import deque
 import numpy as np
 import pandas as pd
 import logging
+import importlib
+try:
+    config = importlib.import_module("src.config")
+    OB_ATR_MULT = config.OB_ATR_MULT
+except (ImportError, AttributeError):
+    OB_ATR_MULT = 0.5  # Safe fallback for standalone testing
 
 logger = logging.getLogger(__name__)
 
@@ -400,6 +406,7 @@ def calculate_features(
     vol_asym_window: int = 20,
     stoch_period: int = 14,
     adx_period: int = 14,
+    ob_atr_mult: Optional[float] = None,
     add_session_features: bool = True,
     session: SessionConfig = SessionConfig(),
     clip_outside_session: bool = True,
@@ -479,8 +486,10 @@ def calculate_features(
     df['ATR'] = tr.ewm(alpha=1.0/14, adjust=False, min_periods=14).mean()
 
     # --- 3. RUN ORDER BLOCK ENGINE ---
+    # Use config default if none provided to function
+    atr_m = ob_atr_mult if ob_atr_mult is not None else OB_ATR_MULT
     ob_engine = OptimizedOrderBlockEngine(
-        internal_lookback=5, swing_lookback=20, atr_multiplier=0.5, missing_value_fill=5.0
+        internal_lookback=5, swing_lookback=20, atr_multiplier=atr_m, missing_value_fill=5.0
     )
     ob_df = ob_engine.generate_features(df)
 
