@@ -9,7 +9,7 @@ from typing import Tuple
 from src.config import (
     ORACLE_MAX_HOLD, ORACLE_ATR_MULT, FEE_PER_SIDE, SLIPPAGE, 
     OB_ATR_MULT, TRAIN_MONTHS, TEST_MONTHS, DATAPATH,
-    ENTRY_PCT, EXIT_PCT
+    ENTRY_PCT, EXIT_PCT, GP_RESTARTS
 )
 
 # Using importlib to handle modules starting with digits
@@ -160,11 +160,38 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
         )
 
         try:
-            # 1. Train GP
-            gp_model = train_gp_model(X_train, y_train)
+            print(f"Running {GP_RESTARTS} GP restarts to find best training formula...")
+            best_model = None
+            best_train_fitness = -np.inf
+            best_seed = None
+            
+            # Use fixed distinct seeds based on fold number so runs are reproducible
+            base_seeds = [42 + i + (fold * 100) for i in range(GP_RESTARTS)]
+            
+            for i, seed in enumerate(base_seeds):
+                candidate_model = train_gp_model(X_train, y_train, random_state=seed)
+                # Extract the best fitness found during this specific run
+                candidate_fitness = candidate_model.run_details_['best_fitness'][-1]
+                
+                print(f"  -> Restart {i+1}/{GP_RESTARTS} (Seed {seed}) | Train Fitness: {candidate_fitness:.4f}")
+                
+                if candidate_fitness > best_train_fitness:
+                    best_train_fitness = candidate_fitness
+                    best_model = candidate_model
+                    best_seed = seed
+
+            # Proceed with the single best model found
+            gp_model = best_model
             formula_str = str(gp_model._program)
+            print(f"Selected Best Formula (Fitness: {best_train_fitness:.4f}, Seed: {best_seed}):\n{formula_str}")
 
             train_signals = gp_model.predict(X_train.values)
+            
+            # --- REFERENCE: Compute absolute thresholds based on training distribution ---
+            entry_threshold_ref = float(np.percentile(train_signals, ENTRY_PCT))
+            exit_threshold_ref  = float(np.percentile(train_signals, EXIT_PCT))
+
+            print(f"-> Train Reference Thresh | Buy: {entry_threshold_ref:.4f}, Sell: {exit_threshold_ref:.4f}")
             print(f"-> Train signal range  | Min: {train_signals.min():.4f}, Max: {train_signals.max():.4f}")
 
         except Exception as e:
@@ -201,13 +228,17 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
                 'max_dd': float(stats.get('Max Drawdown [%]', 0)),
                 'win_rate': float(stats.get('Win Rate [%]', 0)),
                 'total_trades': int(stats.get('Total Trades', 0)),
-                'buy_threshold': float(ENTRY_PCT),
-                'sell_threshold': float(EXIT_PCT),
+                'buy_pct': float(ENTRY_PCT),
+                'sell_pct': float(EXIT_PCT),
+                'buy_threshold_ref': entry_threshold_ref,
+                'sell_threshold_ref': exit_threshold_ref,
                 'train_min': float(train_signals.min()),
                 'train_max': float(train_signals.max()),
                 'n_long': metadata['n_long'],
                 'n_short': metadata['n_short'],
-                'coverage_pct': metadata['coverage_pct']
+                'coverage_pct': metadata['coverage_pct'],
+                'train_fitness': best_train_fitness,
+                'seed': best_seed
             })
 
             if hasattr(stats, 'to_frame'):
@@ -240,14 +271,15 @@ def walk_forward_optimization(df_raw, df_features, y_targets, train_months=6, te
             f.write("\n" + "=" * 60 + "\n")
             f.write(f"Discovery Run: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Data File: {data_path}\n")
-            f.write(f"Parameters: ATR_MULT={ORACLE_ATR_MULT}, MAX_HOLD={ORACLE_MAX_HOLD}\n")
+            f.write(f"Parameters: ATR_MULT={ORACLE_ATR_MULT}, MAX_HOLD={ORACLE_MAX_HOLD}, GP_RESTARTS={GP_RESTARTS}\n")
             f.write("-" * 60 + "\n")
             for w in winning_formulas:
                 f.write(f"Fold {w['fold']} | OOS Results:\n")
                 f.write(f"  Return: {w['return_pct']:.2f}% | Sharpe: {w['sharpe']:.2f} | MaxDD: {w['max_dd']:.2f}% | WinRate: {w['win_rate']:.2f}%\n")
                 f.write(f"  Trades: {w['total_trades']} | Coverage: {w['coverage_pct']:.1f}% (L:{w['n_long']}, S:{w['n_short']})\n")
-                f.write(f"  Rank Percentiles | Buy>{w['buy_threshold']:.0f}% | Sell<{w['sell_threshold']:.0f}%\n")
-                f.write(f"  Train Signal Range | Min:{w['train_min']:.4f}, Max:{w['train_max']:.4f}\n")
+                f.write(f"  Rank Percentiles | Buy>{w['buy_pct']:.0f}% | Sell<{w['sell_pct']:.0f}%\n")
+                f.write(f"  Abs Thresholds   | Buy>{w['buy_threshold_ref']:.4f}, Sell<{w['sell_threshold_ref']:.4f} (training ref)\n")
+                f.write(f"  Train Stats      | Fitness:{w['train_fitness']:.4f} | Range:[{w['train_min']:.3f}, {w['train_max']:.3f}] | Seed:{w['seed']}\n")
                 f.write(f"  Logic: {w['formula']}\n\n")
         print("Winners appended to logfile.")
     else:

@@ -110,13 +110,11 @@ def _pf_sharpe_fitness(y, y_pred, w):
 
 pf_sharpe_metric = make_fitness(function=_pf_sharpe_fitness, greater_is_better=True)
 
-def train_gp_model(X_train, y_train):
+def train_gp_model(X_train, y_train, random_state=42):
     """
     X_train: float32 DataFrame of features
     y_train: float32 Series of Oracle targets
     """
-    print("Initializing GP Engine (8GB RAM Safe Mode)...")
-    
     # Get feature names from the DataFrame columns
     feature_names = list(X_train.columns)
     
@@ -136,12 +134,9 @@ def train_gp_model(X_train, y_train):
         metric=pf_sharpe_metric,
         feature_names=feature_names,
         n_jobs=2,
-        verbose=1,
-        random_state=42
+        verbose=0,                    # Set to 0 to prevent console spam during multiple restarts
+        random_state=random_state     # FIXED: Uses the passed seed
     )
     
-    print("Starting Evolution...")
     est_gp.fit(X_train.values, y_train.values)
-    print("\nBest Formula Found:")
-    print(est_gp._program)
     return est_gp
