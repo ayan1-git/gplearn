@@ -27,17 +27,15 @@ PASSTHROUGH_FEATURES = [
     "feat_icp", "feat_efficiency",                  # Construction-bounded [-1, 1]
     "feat_ob_supp_touches", "feat_ob_res_touches",  # Clipped [0, 1]
     "feat_momentum_rsi",                            # Bounded [-1, 1]
-    "feat_momentum_stoch", "feat_trend_adx",        # Bounded [-1, 1]
-    "feat_autocorr_lag1", "feat_autocorr_lag3"      # NEW: Regime bounded [-1, 1]
+    "feat_rejection_upper", "feat_rejection_lower", # NEW: Bounded [0, 1]
+    "feat_local_structure", "feat_session_gap"      # NEW: Structure [-1, 1], Gap ratio
 ]
 
 SCALE_FEATURES = [
     "feat_volatility_regime", "feat_dist_skew",
     "feat_zscore", "feat_momentum_mds", "feat_vol_asymmetry",
     "feat_ob_dist_supp", "feat_ob_dist_res",
-    "feat_ichimoku_dist_tenkan", "feat_ichimoku_dist_kijun",
-    "feat_ichimoku_dist_span_a", "feat_ichimoku_dist_span_b",
-    "feat_mtf_dist_1w", "feat_mtf_dist_1m", "feat_mtf_slope_1w"  # NEW: Unbounded MTF percentages
+    "feat_vol_squeeze"                              # NEW: Unbounded ATR ratio
 ]
 
 def clip_scale(series: pd.Series, bound: float = 1.0) -> pd.Series:
@@ -135,82 +133,6 @@ def directional_vol_asymmetry(
     raw = (up_vol - down_vol) / (up_vol + down_vol + EPS)
     return raw.rename("feat_vol_asymmetry")
 
-# --- NEW INDICATOR FUNCTIONS ---
-
-def calculate_autocorr(log_ret: pd.Series, window: int = 50, lag: int = 1) -> pd.Series:
-    """
-    Measures if the market is trending (positive) or mean-reverting (negative).
-    Calculates rolling correlation between current return and past return.
-    """
-    shifted_ret = log_ret.shift(lag)
-    # Use min_periods to prevent extreme early noise
-    autocorr = log_ret.rolling(window=window, min_periods=max(20, window//2)).corr(shifted_ret)
-    return autocorr.fillna(0.0)
-
-def calculate_synthetic_mtf(c: pd.Series, bars_per_day: int = 13) -> Tuple[pd.Series, pd.Series, pd.Series]:
-    """
-    Creates Weekly and Monthly trend context using ONLY the intraday data.
-    Assumes standard Nifty 30m session (13 bars a day).
-    """
-    window_1w = bars_per_day * 5   # ~1 Week
-    window_1m = bars_per_day * 20  # ~1 Month
-    
-    ma_1w = c.rolling(window=window_1w, min_periods=max(1, window_1w//2)).mean()
-    ma_1m = c.rolling(window=window_1m, min_periods=max(1, window_1m//2)).mean()
-    
-    # Distance from Close to Macro MAs (Positive = Macro Uptrend)
-    dist_1w = (c - ma_1w) / (ma_1w + EPS)
-    dist_1m = (c - ma_1m) / (ma_1m + EPS)
-    
-    # Slope of the 1-Week Trend (Change in 1W MA over the last day)
-    slope_1w = (ma_1w - ma_1w.shift(bars_per_day)) / (ma_1w.shift(bars_per_day) + EPS)
-    
-    return dist_1w, dist_1m, slope_1w
-
-# --- EXISTING INDICATOR FUNCTIONS (Unchanged) ---
-
-def calculate_stochastic(h: pd.Series, l: pd.Series, c: pd.Series, period: int = 14, smooth_k: int = 3) -> pd.Series:
-    low_min = l.rolling(window=period, min_periods=period).min()
-    high_max = h.rolling(window=period, min_periods=period).max()
-    stoch_k = 100 * ((c - low_min) / (high_max - low_min + EPS))
-    return stoch_k.rolling(window=smooth_k, min_periods=smooth_k).mean()
-
-def calculate_adx(h: pd.Series, l: pd.Series, c: pd.Series, period: int = 14) -> pd.Series:
-    tr1 = h - l
-    tr2 = (h - c.shift(1)).abs()
-    tr3 = (l - c.shift(1)).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-
-    up_move = h - h.shift(1)
-    down_move = l.shift(1) - l
-    
-    pos_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
-    neg_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
-    
-    alpha = 1.0 / float(period)
-    atr = tr.ewm(alpha=alpha, adjust=False, min_periods=period).mean()
-    
-    pos_di = 100 * (pd.Series(pos_dm, index=h.index).ewm(alpha=alpha, adjust=False, min_periods=period).mean() / atr)
-    neg_di = 100 * (pd.Series(neg_dm, index=h.index).ewm(alpha=alpha, adjust=False, min_periods=period).mean() / atr)
-    
-    dx = 100 * (abs(pos_di - neg_di) / (pos_di + neg_di + EPS))
-    return dx.ewm(alpha=alpha, adjust=False, min_periods=period).mean()
-
-def calculate_ichimoku_distances(h: pd.Series, l: pd.Series, c: pd.Series) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
-    tenkan = (h.rolling(9, min_periods=9).max() + l.rolling(9, min_periods=9).min()) / 2
-    kijun = (h.rolling(26, min_periods=26).max() + l.rolling(26, min_periods=26).min()) / 2
-    span_a_raw = (tenkan + kijun) / 2
-    span_b_raw = (h.rolling(52, min_periods=52).max() + l.rolling(52, min_periods=52).min()) / 2
-    
-    span_a = span_a_raw.shift(26)
-    span_b = span_b_raw.shift(26)
-    
-    dist_tenkan = (c - tenkan) / c
-    dist_kijun = (c - kijun) / c
-    dist_span_a = (c - span_a) / c
-    dist_span_b = (c - span_b) / c
-    
-    return dist_tenkan, dist_kijun, dist_span_a, dist_span_b
 
 # --- ORDER BLOCK ENGINE (Unchanged internals, collapsed for brevity) ---
 class OptimizedOrderBlockEngine:
@@ -439,32 +361,43 @@ def calculate_features(
     out["feat_ob_supp_active"] = ob_df['ActiveSwgSupportMask'].astype(np.float32)
     out["feat_ob_res_active"] = ob_df['ActiveSwgResistanceMask'].astype(np.float32)
 
-    # --- 4. NEW INDICATORS: Stochastic, ADX, Ichimoku ---
-    raw_stoch = calculate_stochastic(h, l, c, period=stoch_period)
-    stoch_centered = (raw_stoch - 50.0) / 50.0
-    out['feat_momentum_stoch'] = clip_scale(stoch_centered, bound=1.0)
+    # -------------------------------------------------------------------------
+    # --- NEW INDICATORS: Wicks, Structure, Gaps, Squeeze ---
+    # -------------------------------------------------------------------------
 
-    raw_adx = calculate_adx(h, l, c, period=adx_period)
-    adx_centered = (raw_adx - 25.0) / 25.0 
-    out['feat_trend_adx'] = np.tanh(adx_centered)
-
-    d_tenkan, d_kijun, d_span_a, d_span_b = calculate_ichimoku_distances(h, l, c)
-    out['feat_ichimoku_dist_tenkan'] = d_tenkan
-    out['feat_ichimoku_dist_kijun'] = d_kijun
-    out['feat_ichimoku_dist_span_a'] = d_span_a
-    out['feat_ichimoku_dist_span_b'] = d_span_b
-
-    # --- 5. LATEST INSTITUTIONAL INDICATORS: Autocorr & MTF ---
+    # 1. Intrabar Rejection (Wicks as % of candle range)
+    hl_range = h - l + EPS
+    upper_wick = h - df[['open', 'close']].max(axis=1)
+    lower_wick = df[['open', 'close']].min(axis=1) - l
     
-    # Autocorrelation (Lag 1 and Lag 3) - Bounded [-1, 1]
-    out["feat_autocorr_lag1"] = calculate_autocorr(log_ret, window=50, lag=1)
-    out["feat_autocorr_lag3"] = calculate_autocorr(log_ret, window=50, lag=3)
+    out['feat_rejection_upper'] = (upper_wick / hl_range).clip(0.0, 1.0)
+    out['feat_rejection_lower'] = (lower_wick / hl_range).clip(0.0, 1.0)
+
+    # 2. Local Structural Location (40 bars = ~1 week on 30m)
+    lookback = 40  
+    rolling_high = h.rolling(lookback, min_periods=max(1, lookback//2)).max()
+    rolling_low = l.rolling(lookback, min_periods=max(1, lookback//2)).min()
     
-    # Synthetic MTF Trends - Unbounded (Scaled via pipeline)
-    d_1w, d_1m, slp_1w = calculate_synthetic_mtf(c, bars_per_day=bars_per_day)
-    out["feat_mtf_dist_1w"] = d_1w
-    out["feat_mtf_dist_1m"] = d_1m
-    out["feat_mtf_slope_1w"] = slp_1w
+    # Maps close strictly to [-1, 1] relative to local rolling range
+    out['feat_local_structure'] = ((c - rolling_low) / (rolling_high - rolling_low + EPS)) * 2.0 - 1.0
+
+    # 3. The Overnight Gap (Session Context)
+    # Fast numpy roll to detect date changes without NaT issues
+    dates = out.index.date
+    is_new_session = dates != np.roll(dates, 1)
+    # The first row will technically flag as True, so we must safely handle the shift
+    prev_close = c.shift(1)
+    raw_gap = (df['open'] - prev_close) / (prev_close + EPS)
+    
+    # Apply the gap only on session transition bars; otherwise 0.0
+    out['feat_session_gap'] = np.where(is_new_session, raw_gap, 0.0)
+    # Force the very first row to 0.0 to fix the np.roll edge case
+    out.iloc[0, out.columns.get_loc('feat_session_gap')] = 0.0
+
+    # 4. Volatility Squeeze (Micro)
+    atr_fast = tr.rolling(5, min_periods=5).mean()
+    atr_slow = tr.rolling(20, min_periods=20).mean()
+    out['feat_vol_squeeze'] = atr_fast / (atr_slow + EPS)
 
     # --- 6. Session Features ---
     if add_session_features:
