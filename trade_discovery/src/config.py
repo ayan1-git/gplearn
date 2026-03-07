@@ -2,7 +2,7 @@
 
 # Oracle & Backtest Params
 ORACLE_MAX_HOLD = 96      # Max hold time (e.g., 48 hours at 30m bars)
-ORACLE_ATR_MULT = 3.5  # Dynamic Volatility Multiplier (Single Source of Truth)
+ORACLE_ATR_MULT = 4.0  # Dynamic Volatility Multiplier (Single Source of Truth)
 FEE_PER_SIDE    = 0.0003  # 0.03% Transaction Fee
 SLIPPAGE        = 0.0001  # 0.01% Slippage per side
 

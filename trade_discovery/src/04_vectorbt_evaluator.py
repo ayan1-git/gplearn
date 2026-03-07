@@ -2,6 +2,9 @@ import vectorbt as vbt
 import pandas as pd
 import numpy as np
 
+# Suppress downcasting warnings from shift/fillna (Pandas 3.0+ behavior)
+pd.set_option('future.no_silent_downcasting', True)
+
 def evaluate_formula_with_vectorbt(
     gp_model, 
     df_features_oos, 
@@ -61,16 +64,27 @@ def evaluate_formula_with_vectorbt(
     atr_pct_raw    = (atr / close_prices) * ORACLE_ATR_MULT
     atr_pct_series = atr_pct_raw.ffill().fillna(0.01).clip(lower=0.001)
 
-    print("Running VectorBT Backtest with Long/Short and Dynamic ATR Trailing Stop...")
+    # 1. Extract open prices for execution
+    open_prices = df_raw_oos.loc[df_features_oos.index, 'open']
+
+    # 2. Shift signals forward by 1 bar to simulate entering on the NEXT bar
+    # fillna(False) prevents trading on the very first NaN row
+    entries_shifted       = entries_series.shift(1).fillna(False).astype(bool)
+    exits_shifted         = exits_series.shift(1).fillna(False).astype(bool)
+    short_entries_shifted = short_entries_series.shift(1).fillna(False).astype(bool)
+    short_exits_shifted   = short_exits_series.shift(1).fillna(False).astype(bool)
+
+    print("Running VectorBT Backtest (Shifted Execution on Next Open)...")
     portfolio = vbt.Portfolio.from_signals(
-        close=close_prices,
-        entries=entries_series,
-        exits=exits_series,
-        short_entries=short_entries_series,
-        short_exits=short_exits_series,
+        close=close_prices,          # Used for MTM valuation and trailing stop logic
+        price=open_prices,           # OVERRIDE: Actual execution happens at the open price
+        entries=entries_shifted,
+        exits=exits_shifted,
+        short_entries=short_entries_shifted,
+        short_exits=short_exits_shifted,
         fees=fees,
         slippage=slippage,
-        sl_stop=atr_pct_series,
+        sl_stop=atr_pct_series,      # ATR stops will still trigger accurately
         sl_trail=True,
         freq='30min'
     )

@@ -57,7 +57,9 @@ def run_oracle_scoring(
     min_vol_pct    = np.float32(0.001)
 
     for i in range(n - max_hold):
-        entry_price = close_arr[i]
+        # We compute features using data up to bar 'i'. 
+        # But our simulated trade must enter at the open of bar 'i+1'.
+        entry_price = open_arr[i + 1]
         vol_dist    = stop_distances[i]
 
         if vol_dist <= 0 or entry_price <= 0:
