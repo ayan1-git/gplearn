@@ -9,12 +9,14 @@ try:
     config = importlib.import_module("src.config")
     DEFAULT_FEES = float(config.FEE_PER_SIDE)
     DEFAULT_SLIPPAGE = float(config.SLIPPAGE)
-    DEFAULT_ATR_MULT = float(config.ORACLE_ATR_MULT)
+    DEFAULT_TP_MULT = float(config.TP_ATR_MULT)
+    DEFAULT_SL_MULT = float(config.SL_ATR_MULT)
     DEFAULT_ABSOLUTE_EDGE_FLOOR = float(config.ABSOLUTE_EDGE_FLOOR)
 except (ImportError, AttributeError):
     DEFAULT_FEES = 0.0003
     DEFAULT_SLIPPAGE = 0.0001
-    DEFAULT_ATR_MULT = 2.0
+    DEFAULT_TP_MULT = 3.0
+    DEFAULT_SL_MULT = 1.5
     DEFAULT_ABSOLUTE_EDGE_FLOOR = 0.0010
 
 
@@ -28,19 +30,11 @@ def evaluate_formula_with_vectorbt(
     slippage: float = DEFAULT_SLIPPAGE,
     rolling_window: int = 500,
     absolute_edge_floor: float = DEFAULT_ABSOLUTE_EDGE_FLOOR,
+    tp_mult: float = DEFAULT_TP_MULT,
+    sl_mult: float = DEFAULT_SL_MULT,
 ):
     """
-    Evaluate GP formula using:
-    1. Causal rolling percentile ranks of model scores
-    2. Absolute score floor to prevent forced trading in flat regimes
-    3. Next-bar-open execution in vectorbt
-
-    Parameters
-    ----------
-    long_pct_level : float
-        Percentile level in [0, 100], e.g. 80 means top 20%.
-    short_pct_level : float
-        Percentile level in [0, 100], e.g. 20 means bottom 20%.
+    Evaluate GP formula using asymmetric Triple Barrier Method.
     """
     if not 0.0 <= short_pct_level <= 100.0:
         raise ValueError("short_pct_level must be in [0, 100]")
@@ -48,10 +42,6 @@ def evaluate_formula_with_vectorbt(
         raise ValueError("long_pct_level must be in [0, 100]")
     if short_pct_level >= long_pct_level:
         raise ValueError("short_pct_level must be < long_pct_level")
-    if rolling_window < 20:
-        raise ValueError("rolling_window must be >= 20")
-    if absolute_edge_floor < 0:
-        raise ValueError("absolute_edge_floor must be >= 0")
 
     required_cols = {"open", "high", "low", "close"}
     missing_cols = required_cols - set(df_raw_oos.columns)
@@ -64,10 +54,7 @@ def evaluate_formula_with_vectorbt(
 
     # Causal rolling percentile rank against recent history only
     min_periods = min(50, rolling_window)
-    rolling_ranks = scores.rolling(
-        window=rolling_window,
-        min_periods=min_periods
-    ).rank(pct=True)
+    rolling_ranks = scores.rolling(window=rolling_window, min_periods=min_periods).rank(pct=True)
 
     # Warmup fallback
     expanding_ranks = scores.expanding(min_periods=1).rank(pct=True)
@@ -76,7 +63,7 @@ def evaluate_formula_with_vectorbt(
     long_rank_mask = causal_ranks >= (long_pct_level / 100.0)
     short_rank_mask = causal_ranks <= (short_pct_level / 100.0)
 
-    # Absolute edge filter: do not trade weak scores even if ranks look extreme
+    # Absolute edge filter
     long_edge_mask = scores >= absolute_edge_floor
     short_edge_mask = scores <= -absolute_edge_floor
 
@@ -89,20 +76,16 @@ def evaluate_formula_with_vectorbt(
 
     print(
         f"-> OOS Signal Coverage | Longs: {n_long} | Shorts: {n_short} | "
-        f"Total: {coverage:.1f}% of bars | Floor: {absolute_edge_floor:.4f}"
+        f"Total: {coverage:.1f}% | TP/SL: {tp_mult}/{sl_mult}"
     )
 
     if n_long == 0 and n_short == 0:
-        print("-> WARNING: No OOS signals passed both rank and absolute-edge filters.")
+        print("-> WARNING: No OOS signals passed filters.")
 
     entries_series = pd.Series(long_entries, index=df_features_oos.index)
     short_entries_series = pd.Series(short_entries, index=df_features_oos.index)
 
-    # Cross-close when opposite side triggers
-    exits_series = short_entries_series
-    short_exits_series = entries_series
-
-    # ATR trailing stop
+    # ATR Calculations
     high_low = df_raw_oos["high"] - df_raw_oos["low"]
     high_close = (df_raw_oos["high"] - df_raw_oos["close"].shift(1)).abs()
     low_close = (df_raw_oos["low"] - df_raw_oos["close"].shift(1)).abs()
@@ -114,16 +97,22 @@ def evaluate_formula_with_vectorbt(
     close_prices = df_raw_oos.loc[df_features_oos.index, "close"]
     open_prices = df_raw_oos.loc[df_features_oos.index, "open"]
 
-    atr_pct_raw = (atr / close_prices) * DEFAULT_ATR_MULT
-    atr_pct_series = atr_pct_raw.ffill().fillna(0.01).clip(lower=0.001)
+    # Trailing Stop (SL) and Take Profit (TP)
+    sl_pct_series = (atr / close_prices) * sl_mult
+    tp_pct_series = (atr / close_prices) * tp_mult
+
+    sl_pct_series = sl_pct_series.ffill().fillna(0.01).clip(lower=0.001)
+    tp_pct_series = tp_pct_series.ffill().fillna(0.01).clip(lower=0.001)
 
     # Execute on next bar open
     entries_shifted = entries_series.shift(1).fillna(False).astype(bool)
-    exits_shifted = exits_series.shift(1).fillna(False).astype(bool)
     short_entries_shifted = short_entries_series.shift(1).fillna(False).astype(bool)
-    short_exits_shifted = short_exits_series.shift(1).fillna(False).astype(bool)
+    
+    # Exits only when opposite signal triggers (Cross-Close)
+    exits_shifted = short_entries_shifted
+    short_exits_shifted = entries_shifted
 
-    print("Running VectorBT backtest (shifted execution on next open)...")
+    print("Running VectorBT backtest (Asymmetric TBM)...")
     portfolio = vbt.Portfolio.from_signals(
         close=close_prices,
         price=open_prices,
@@ -133,7 +122,8 @@ def evaluate_formula_with_vectorbt(
         short_exits=short_exits_shifted,
         fees=fees,
         slippage=slippage,
-        sl_stop=atr_pct_series,
+        sl_stop=sl_pct_series,
+        tp_stop=tp_pct_series,
         sl_trail=True,
         freq="30min"
     )
@@ -146,11 +136,8 @@ def evaluate_formula_with_vectorbt(
         "n_long": n_long,
         "n_short": n_short,
         "coverage_pct": float(coverage),
-        "absolute_edge_floor": float(absolute_edge_floor),
-        "long_pct_level": float(long_pct_level),
-        "short_pct_level": float(short_pct_level),
-        "score_mean": float(scores.mean()),
-        "score_std": float(scores.std(ddof=0)),
+        "tp_mult": float(tp_mult),
+        "sl_mult": float(sl_mult),
     }
 
     return portfolio, stats, metadata

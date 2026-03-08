@@ -21,8 +21,10 @@ evaluate_formula_with_vectorbt = vbteval.evaluate_formula_with_vectorbt
 PASSTHROUGH_FEATURES = fe.PASSTHROUGH_FEATURES
 SCALE_FEATURES = fe.SCALE_FEATURES
 
+# Config Parameters
 ORACLE_MAX_HOLD = cfg.ORACLE_MAX_HOLD
-ORACLE_ATR_MULT = cfg.ORACLE_ATR_MULT
+TP_ATR_MULT = cfg.TP_ATR_MULT
+SL_ATR_MULT = cfg.SL_ATR_MULT
 ENTRY_PCT = cfg.ENTRY_PCT
 EXIT_PCT = cfg.EXIT_PCT
 TRAIN_MONTHS = cfg.TRAIN_MONTHS
@@ -54,11 +56,13 @@ def load_and_prepare_data(filepath: str):
     df_features = calculate_features(df_raw, **feature_kwargs)
     print(f"Features ready. Columns: {list(df_features.columns)}")
 
+    # Generate asymmetric labels
     df_features, y_targets = generate_tbm_targets(
         df_raw=df_raw,
         df_features=df_features,
         max_hold=ORACLE_MAX_HOLD,
-        barrier_mult=ORACLE_ATR_MULT,
+        tp_mult=TP_ATR_MULT,
+        sl_mult=SL_ATR_MULT,
     )
 
     df_raw = df_raw.loc[df_features.index].astype(np.float32)
@@ -81,7 +85,6 @@ def tanh_scale_train_apply_test(
 
     X_train_scaled = pd.DataFrame(index=X_train.index)
     X_test_scaled = pd.DataFrame(index=X_test.index)
-
     eps = 1e-8
 
     if actual_scale_cols:
@@ -91,13 +94,8 @@ def tanh_scale_train_apply_test(
         scale_factors = np.percentile(np.abs(train_scale_view), 75, axis=0)
         scale_factors = np.maximum(scale_factors, eps)
 
-        X_train_scaled[actual_scale_cols] = np.tanh(
-            train_scale_view / scale_factors
-        ).astype(np.float32)
-
-        X_test_scaled[actual_scale_cols] = np.tanh(
-            test_scale_view / scale_factors
-        ).astype(np.float32)
+        X_train_scaled[actual_scale_cols] = np.tanh(train_scale_view / scale_factors).astype(np.float32)
+        X_test_scaled[actual_scale_cols] = np.tanh(test_scale_view / scale_factors).astype(np.float32)
 
     if actual_pass_cols:
         X_train_scaled[actual_pass_cols] = X_train[actual_pass_cols].astype(np.float32)
@@ -149,13 +147,13 @@ def walk_forward_optimization(
             X_train_raw = X_train_raw.iloc[:-ORACLE_MAX_HOLD]
             y_train_raw = y_train_raw.iloc[:-ORACLE_MAX_HOLD]
         else:
-            print(f"-> Fold {fold} training set too short to purge. Skipping.")
+            print(f"-> Fold {fold} training set too short. Skipping.")
             current_train_start += pd.DateOffset(months=test_months)
             fold += 1
             continue
 
         if len(X_train_raw) < 500 or len(X_test_raw) < 200:
-            print("Not enough data in this fold after purging. Skipping.")
+            print("Not enough data in this fold. Skipping.")
             current_train_start += pd.DateOffset(months=test_months)
             fold += 1
             continue
@@ -172,23 +170,8 @@ def walk_forward_optimization(
             gp_model = train_gp_model(X_train, y_train)
             formula_str = str(gp_model._program)
 
-            train_scores = pd.Series(
-                gp_model.predict(X_train.values),
-                index=X_train.index,
-                name="train_score"
-            )
-
-            print(
-                "-> Train score diagnostics | "
-                f"mean: {train_scores.mean():.6f} | "
-                f"std: {train_scores.std(ddof=0):.6f} | "
-                f"min: {train_scores.min():.6f} | "
-                f"max: {train_scores.max():.6f}"
-            )
-            print(
-                f"-> Using rank thresholds from config | "
-                f"Long >= {ENTRY_PCT}th percentile, Short <= {EXIT_PCT}th percentile"
-            )
+            train_outputs = gp_model.predict(X_train.values)
+            print(f"-> Formula Seed: {gp_model.random_state} | Train Score Range: [{train_outputs.min():.3f}, {train_outputs.max():.3f}]")
 
         except Exception as e:
             print(f"GP training failed on fold {fold}: {e}")
@@ -196,56 +179,41 @@ def walk_forward_optimization(
             fold += 1
             continue
 
+        # Evaluate Out-of-Sample with Asymmetric TBM
         portfolio, stats, metadata = evaluate_formula_with_vectorbt(
             gp_model=gp_model,
             df_features_oos=X_test,
             df_raw_oos=raw_test,
             long_pct_level=ENTRY_PCT,
             short_pct_level=EXIT_PCT,
+            tp_mult=TP_ATR_MULT,
+            sl_mult=SL_ATR_MULT,
         )
 
         total_return = stats.get("Total Return [%]", 0.0)
         sharpe = stats.get("Sharpe Ratio", 0.0)
 
-        if pd.isna(total_return):
-            total_return = 0.0
-        if pd.isna(sharpe):
-            sharpe = 0.0
+        if pd.isna(total_return): total_return = 0.0
+        if pd.isna(sharpe): sharpe = 0.0
 
         if total_return > 0 and sharpe > 0.5:
-            print(
-                f"-> SUCCESS! Formula survived OOS. "
-                f"Return: {total_return:.2f}%, Sharpe: {sharpe:.2f}"
-            )
+            print(f"-> SUCCESS! Formula survived OOS. Ret: {total_return:.2f}%, Sharpe: {sharpe:.2f}")
 
-            winning_formulas.append(
-                {
-                    "fold": fold,
-                    "formula": formula_str,
-                    "return_pct": float(total_return),
-                    "sharpe": float(sharpe),
-                    "long_pct_level": float(ENTRY_PCT),
-                    "short_pct_level": float(EXIT_PCT),
-                    "coverage_pct": float(metadata["coverage_pct"]),
-                    "n_long": int(metadata["n_long"]),
-                    "n_short": int(metadata["n_short"]),
-                }
-            )
+            winning_formulas.append({
+                "fold": fold,
+                "formula": formula_str,
+                "return_pct": float(total_return),
+                "sharpe": float(sharpe),
+                "tp_mult": float(TP_ATR_MULT),
+                "sl_mult": float(SL_ATR_MULT),
+                "coverage_pct": float(metadata["coverage_pct"]),
+                "n_long": int(metadata["n_long"]),
+                "n_short": int(metadata["n_short"]),
+            })
 
-            if hasattr(stats, "to_frame"):
-                stats.to_frame(name="value").to_csv(
-                    f"outputs/vectorbt_stats/fold_{fold}_winner.csv"
-                )
-            else:
-                pd.DataFrame(stats).to_csv(
-                    f"outputs/vectorbt_stats/fold_{fold}_winner.csv"
-                )
+            stats.to_frame(name="value").to_csv(f"outputs/vectorbt_stats/fold_{fold}_winner.csv")
         else:
-            print(
-                f"-> FAILED. Formula collapsed in OOS. "
-                f"Return: {total_return:.2f}%, Sharpe: {sharpe:.2f}"
-            )
-            print("Discarding formula and moving to next fold.")
+            print(f"-> FAILED. Formula collapsed in OOS. Ret: {total_return:.2f}%, Sharpe: {sharpe:.2f}")
 
         current_train_start += pd.DateOffset(months=test_months)
         fold += 1
@@ -265,46 +233,24 @@ def walk_forward_optimization(
             f.write("\n" + "=" * 60 + "\n")
             f.write(f"Discovery Run: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Data File: {data_path}\n")
-            f.write(
-                f"Parameters: TBM_ATR_MULT={ORACLE_ATR_MULT}, "
-                f"MAX_HOLD={ORACLE_MAX_HOLD}, ENTRY_PCT={ENTRY_PCT}, EXIT_PCT={EXIT_PCT}\n"
-            )
+            f.write(f"Parameters: TP_MULT={TP_ATR_MULT}, SL_MULT={SL_ATR_MULT}, MAX_HOLD={ORACLE_MAX_HOLD}\n")
             f.write("-" * 60 + "\n")
             for w in winning_formulas:
-                f.write(
-                    f"Fold {w['fold']} | Ret: {w['return_pct']:.2f}% | "
-                    f"Sharpe: {w['sharpe']:.2f} | Coverage: {w['coverage_pct']:.2f}%\n"
-                )
-                f.write(
-                    f"Signals: Longs={w['n_long']} | Shorts={w['n_short']} | "
-                    f"Thresholds: Long>={w['long_pct_level']}pct, "
-                    f"Short<={w['short_pct_level']}pct\n"
-                )
+                f.write(f"Fold {w['fold']} | Ret: {w['return_pct']:.2f}% | Sharpe: {w['sharpe']:.2f} | Coverage: {w['coverage_pct']:.2f}%\n")
+                f.write(f"TP/SL Ratio: {w['tp_mult']}/{w['sl_mult']} | Signals: L={w['n_long']}, S={w['n_short']}\n")
                 f.write(f"Logic: {w['formula']}\n\n")
-        print("Winners appended to logfile.")
     else:
-        print("No robust strategies found. Consider adjusting parameters or providing more data.")
+        print("No robust strategies found.")
 
 
 if __name__ == "__main__":
     setup_directories()
-
     if not os.path.exists(DATAPATH):
-        raise FileNotFoundError(
-            f"CRITICAL ERROR: Data file not found at {DATAPATH}. "
-            "Please check your filename and directory."
-        )
+        raise FileNotFoundError(f"Data file not found at {DATAPATH}")
 
     try:
         df_raw, df_features, y_targets = load_and_prepare_data(DATAPATH)
-        walk_forward_optimization(
-            df_raw=df_raw,
-            df_features=df_features,
-            y_targets=y_targets,
-            train_months=TRAIN_MONTHS,
-            test_months=TEST_MONTHS,
-            data_path=DATAPATH,
-        )
+        walk_forward_optimization(df_raw, df_features, y_targets, data_path=DATAPATH)
     except Exception as e:
         print(f"Pipeline crashed: {e}")
         raise

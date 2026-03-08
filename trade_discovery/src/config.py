@@ -1,11 +1,13 @@
 # --- STRATEGY CONFIGURATION ---
 
 # Target Generation / Backtest Params
-# NOTE:
-# ORACLE_ATR_MULT is retained for compatibility with the existing pipeline name,
-# but it now represents the symmetric TBM barrier multiple.
-ORACLE_MAX_HOLD = 96       # Max hold time (e.g., 48 hours at 30m bars)
-ORACLE_ATR_MULT = 2.0      # Continuous TBM barrier multiple (+/- 2 ATR)
+ORACLE_MAX_HOLD = 52       # Max hold time (e.g., 48 hours at 30m bars)
+
+# ASYMMETRIC TRIPLE BARRIER MULTIPLIERS (ATR Units)
+# These define the Take Profit and Stop Loss distances for BOTH
+# target generation (GP labels) and the VectorBT backtest.
+TP_ATR_MULT = 3.0          # Target Profit: e.g., 3.0 ATR
+SL_ATR_MULT = 1.5         # Stop Loss: e.g., 1.5 ATR (Reward/Risk = 2.0)
 
 # Execution Frictions
 FEE_PER_SIDE = 0.0003      # 0.03% transaction fee
@@ -13,8 +15,7 @@ SLIPPAGE = 0.0001          # 0.01% slippage per side
 
 # Absolute score floor required before any trade is allowed.
 # Round-trip friction = 2 * (fee + slippage) = 0.0008 (0.08%)
-# Add a small safety margin so flat/choppy regimes stay flat.
-ABSOLUTE_EDGE_FLOOR = 0.0010  # 0.10%
+ABSOLUTE_EDGE_FLOOR = 0.0040  # 0.40% Selective threshold
 
 # Feature Engineering Params
 OB_ATR_MULT = 0.5         # Width of Order Block zones in ATR units
@@ -28,7 +29,7 @@ GP_RESTARTS = 3           # Number of GP runs per fold
 # Fitness Function Constraints
 MIN_LONG = 3
 MIN_SHORT = 3
-MIN_TRADES = 12
+MIN_TRADES = 48
 
 # Numeric Constraints & Regularization
 EPS = 1e-8
@@ -41,4 +42,4 @@ RETURN_LAMBDA = 10.0
 # WFO / Data Params
 TRAIN_MONTHS = 30
 TEST_MONTHS = 6
-DATAPATH = "data/NIFTYNEXT50_30min_4Y.csv"
+DATAPATH = "data/Nifty-30min-4year(in).csv"
