@@ -1,30 +1,36 @@
 # --- STRATEGY CONFIGURATION ---
 
 # Target Generation / Backtest Params
-ORACLE_MAX_HOLD = 52       # Max hold time (e.g., 48 hours at 30m bars)
+# 52 bars at 30-minute resolution is approximately 4 trading sessions
+# when using ~13 bars per day for Indian cash-session style data.
+ORACLE_MAX_HOLD = 52
 
 # ASYMMETRIC TRIPLE BARRIER MULTIPLIERS (ATR Units)
 # These define the Take Profit and Stop Loss distances for BOTH
-# target generation (GP labels) and the VectorBT backtest.
-TP_ATR_MULT = 3.0          # Target Profit: e.g., 3.0 ATR
-SL_ATR_MULT = 1.5         # Stop Loss: e.g., 1.5 ATR (Reward/Risk = 2.0)
+# target generation and out-of-sample evaluation.
+TP_ATR_MULT = 3.0
+SL_ATR_MULT = 1.5
 
 # Execution Frictions
-FEE_PER_SIDE = 0.0003      # 0.03% transaction fee
-SLIPPAGE = 0.0001          # 0.01% slippage per side
+FEE_PER_SIDE = 0.0003
+SLIPPAGE = 0.0001
 
 # Absolute score floor required before any trade is allowed.
-# Round-trip friction = 2 * (fee + slippage) = 0.0008 (0.08%)
-ABSOLUTE_EDGE_FLOOR = 0.0040  # 0.40% Selective threshold
+# Keep this unchanged for the first post-fix validation run, then retune
+# from observed OOS coverage after the stricter evaluator is live.
+ABSOLUTE_EDGE_FLOOR = 0.0040
 
 # Feature Engineering Params
-OB_ATR_MULT = 0.5         # Width of Order Block zones in ATR units
+OB_ATR_MULT = 0.5
 
 # GP Signal Calibration Thresholds
-# These are percentile LEVELS, not raw score values.
-ENTRY_PCT = 80            # Long when score is in the top 20% of recent history
-EXIT_PCT = 20             # Short when score is in the bottom 20% of recent history
-GP_RESTARTS = 3           # Number of GP runs per fold
+# These are percentile levels, not raw score values.
+ENTRY_PCT = 80
+EXIT_PCT = 20
+
+# Optional for future multi-restart orchestration in the pipeline.
+# Safe to keep here even if not yet consumed directly.
+GP_RESTARTS = 3
 
 # Fitness Function Constraints
 MIN_LONG = 3
@@ -35,9 +41,9 @@ MIN_TRADES = 48
 EPS = 1e-8
 STD_FLOOR = 1e-6
 PF_SMOOTH_K = 1e-2
-PF_MAX = 500.0
-SHARPE_LAMBDA = 0.05
-RETURN_LAMBDA = 10.0
+PF_MAX = 100.0
+SHARPE_LAMBDA = 0.10
+RETURN_LAMBDA = 2.0
 
 # WFO / Data Params
 TRAIN_MONTHS = 30
