@@ -296,8 +296,8 @@ def walk_forward_optimization(
             train_buy = np.percentile(train_outputs, ENTRY_PCT)
             train_sell = np.percentile(train_outputs, EXIT_PCT)
 
-            train_long_mask = train_outputs > train_buy
-            train_short_mask = train_outputs < train_sell
+            train_long_mask = (train_outputs > train_buy) & (train_outputs >= cfg.ABSOLUTE_EDGE_FLOOR)
+            train_short_mask = (train_outputs < train_sell) & (train_outputs <= -cfg.ABSOLUTE_EDGE_FLOOR)
 
             n_train_long = int(train_long_mask.sum())
             n_train_short = int(train_short_mask.sum())

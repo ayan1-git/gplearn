@@ -79,11 +79,13 @@ try:
     IMBALANCE_LAMBDA = float(getattr(config, "IMBALANCE_LAMBDA", 2.0))
     ACTIVITY_FLOOR = float(getattr(config, "ACTIVITY_FLOOR", 0.08))
     ACTIVITY_LAMBDA = float(getattr(config, "ACTIVITY_LAMBDA", 0.5))
+    ABSOLUTE_EDGE_FLOOR = float(config.ABSOLUTE_EDGE_FLOOR)
 except (ImportError, AttributeError):
     ENTRY_PCT, EXIT_PCT = 80.0, 20.0
     MIN_LONG, MIN_SHORT, MIN_TRADES = 3, 3, 12
     EPS, STD_FLOOR, PF_SMOOTH_K, PF_MAX = 1e-8, 1e-6, 1e-2, 500.0
     SHARPE_LAMBDA, RETURN_LAMBDA = 0.05, 10.0
+    ABSOLUTE_EDGE_FLOOR = 0.0010
 
     IMBALANCE_LAMBDA = 2.0
     ACTIVITY_FLOOR = 0.08
@@ -154,8 +156,14 @@ def _pf_sharpe_fitness(y, y_pred, w):
 
     signal = np.zeros_like(y_pred, dtype=np.float32)
 
-    long_mask = y_pred > buy
-    short_mask = y_pred < sell
+    long_rank_mask = y_pred > buy
+    short_rank_mask = y_pred < sell
+
+    long_edge_mask = y_pred >= ABSOLUTE_EDGE_FLOOR
+    short_edge_mask = y_pred <= -ABSOLUTE_EDGE_FLOOR
+
+    long_mask = long_rank_mask & long_edge_mask
+    short_mask = short_rank_mask & short_edge_mask
 
     overlap = long_mask & short_mask
     if overlap.any():
@@ -209,9 +217,6 @@ def _pf_sharpe_fitness(y, y_pred, w):
     if activity_ratio <= 0.0:
         return 0.0
 
-    imbalance_ratio = abs(n_long - n_short) / max(n_trades, 1)
-    imbalance_penalty = IMBALANCE_LAMBDA * imbalance_ratio
-
     activity_penalty = 0.0
     if activity_ratio < ACTIVITY_FLOOR:
         activity_penalty = ACTIVITY_LAMBDA * (ACTIVITY_FLOOR - activity_ratio)
@@ -220,7 +225,6 @@ def _pf_sharpe_fitness(y, y_pred, w):
         np.log(pf)
         + (SHARPE_LAMBDA * sharpe)
         + (RETURN_LAMBDA * tot_ret)
-        - imbalance_penalty
         - activity_penalty
     )
 
