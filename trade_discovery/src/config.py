@@ -18,7 +18,7 @@ SLIPPAGE = 0.0001
 # Absolute score floor required before any trade is allowed.
 # Keep this unchanged for the first post-fix validation run, then retune
 # from observed OOS coverage after the stricter evaluator is live.
-ABSOLUTE_EDGE_FLOOR = 0.0060
+ABSOLUTE_EDGE_FLOOR = 0.0040
 
 # Feature Engineering Params
 OB_ATR_MULT = 0.5

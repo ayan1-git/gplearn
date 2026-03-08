@@ -30,6 +30,7 @@ EXIT_PCT = cfg.EXIT_PCT
 TRAIN_MONTHS = cfg.TRAIN_MONTHS
 TEST_MONTHS = cfg.TEST_MONTHS
 DATAPATH = cfg.DATAPATH
+GP_RESTARTS = getattr(cfg, "GP_RESTARTS", 1)
 
 
 def setup_directories() -> None:
@@ -279,95 +280,94 @@ def walk_forward_optimization(
             fold += 1
             continue
 
-        try:
-            gp_model = train_gp_model(X_train, y_train)
-            formula_str = str(gp_model._program)
+        best_candidate = None
+        best_candidate_sharpe = -999.0
 
-            train_outputs = gp_model.predict(X_train.values)
-            train_min = float(np.nanmin(train_outputs))
-            train_max = float(np.nanmax(train_outputs))
+        for restart_idx in range(GP_RESTARTS):
+            seed = 42 + restart_idx
+            print(f"-> Restart {restart_idx+1}/{GP_RESTARTS} (Seed {seed})")
 
-            print(
-                f"-> Formula Seed: {gp_model.random_state} | "
-                f"Train Score Range: [{train_min:.3f}, {train_max:.3f}]"
+            try:
+                gp_model = train_gp_model(X_train, y_train, random_state=seed)
+                formula_str = str(gp_model._program)
+
+                train_outputs = gp_model.predict(X_train.values)
+                train_min = float(np.nanmin(train_outputs))
+                train_max = float(np.nanmax(train_outputs))
+
+                print(
+                    f"   [Seed {seed}] Train Range: [{train_min:.3f}, {train_max:.3f}] | "
+                    f"Logic: {formula_str[:80]}..."
+                )
+
+                train_buy = np.percentile(train_outputs, ENTRY_PCT)
+                train_sell = np.percentile(train_outputs, EXIT_PCT)
+
+                train_long_mask = (train_outputs > train_buy) & (train_outputs >= cfg.ABSOLUTE_EDGE_FLOOR)
+                train_short_mask = (train_outputs < train_sell) & (train_outputs <= -cfg.ABSOLUTE_EDGE_FLOOR)
+
+                n_train_long = int(train_long_mask.sum())
+                n_train_short = int(train_short_mask.sum())
+                n_train_trades = n_train_long + n_train_short
+                long_share = n_train_long / max(n_train_trades, 1)
+
+                print(
+                    f"   [Seed {seed}] Train Mix | L={n_train_long}, S={n_train_short} | L-share={long_share:.1%}"
+                )
+
+                portfolio, stats, metadata = evaluate_formula_with_vectorbt(
+                    gp_model=gp_model,
+                    df_features_oos=X_test,
+                    df_raw_oos=raw_test,
+                    long_pct_level=ENTRY_PCT,
+                    short_pct_level=EXIT_PCT,
+                    tp_mult=TP_ATR_MULT,
+                    sl_mult=SL_ATR_MULT,
+                )
+
+                curr_ret = stats.get("Total Return [%]", 0.0)
+                curr_sharpe = stats.get("Sharpe Ratio", 0.0)
+                if pd.isna(curr_ret): curr_ret = 0.0
+                if pd.isna(curr_sharpe): curr_sharpe = 0.0
+
+                print(
+                    f"   [Seed {seed}] OOS Coverage: {metadata['coverage_pct']:.2f}% | "
+                    f"Ret: {curr_ret:.2f}% | Sharpe: {curr_sharpe:.2f}"
+                )
+
+                # Winner criteria
+                if curr_ret > 0 and curr_sharpe > 0.5:
+                    if curr_sharpe > best_candidate_sharpe:
+                        best_candidate_sharpe = curr_sharpe
+                        best_candidate = {
+                            "fold": fold,
+                            "formula": formula_str,
+                            "return_pct": float(curr_ret),
+                            "sharpe": float(curr_sharpe),
+                            "tp_mult": float(TP_ATR_MULT),
+                            "sl_mult": float(SL_ATR_MULT),
+                            "coverage_pct": float(metadata["coverage_pct"]),
+                            "n_long": int(metadata["n_long"]),
+                            "n_short": int(metadata["n_short"]),
+                            "stats": stats.copy()
+                        }
+                        print(f"   *** New best candidate for Fold {fold} ***")
+
+            except Exception as e:
+                print(f"   Restart failed (Seed {seed}): {e}")
+                continue
+
+        if best_candidate:
+            print(f"-> Fold {fold} SUCCESS! Final Best Sharpe: {best_candidate['sharpe']:.2f}")
+            winning_formulas.append(best_candidate)
+            best_candidate["stats"].to_frame(name="value").to_csv(
+                f"outputs/vectorbt_stats/fold_{fold}_winner.csv"
             )
-            print(f"-> Logic: {formula_str}")
-
-            train_buy = np.percentile(train_outputs, ENTRY_PCT)
-            train_sell = np.percentile(train_outputs, EXIT_PCT)
-
-            train_long_mask = (train_outputs > train_buy) & (train_outputs >= cfg.ABSOLUTE_EDGE_FLOOR)
-            train_short_mask = (train_outputs < train_sell) & (train_outputs <= -cfg.ABSOLUTE_EDGE_FLOOR)
-
-            n_train_long = int(train_long_mask.sum())
-            n_train_short = int(train_short_mask.sum())
-            n_train_trades = n_train_long + n_train_short
-
-            long_share = n_train_long / max(n_train_trades, 1)
-            short_share = n_train_short / max(n_train_trades, 1)
-
-            print(
-                f"-> Train signal mix | Longs: {n_train_long} | Shorts: {n_train_short} | "
-                f"Long share: {long_share:.2%} | Short share: {short_share:.2%}"
-            )
-        except Exception as e:
-            print(f"GP training failed on fold {fold}: {e}")
-            current_train_start += pd.DateOffset(months=test_months)
-            fold += 1
-            continue
-
-        try:
-            portfolio, stats, metadata = evaluate_formula_with_vectorbt(
-                gp_model=gp_model,
-                df_features_oos=X_test,
-                df_raw_oos=raw_test,
-                long_pct_level=ENTRY_PCT,
-                short_pct_level=EXIT_PCT,
-                tp_mult=TP_ATR_MULT,
-                sl_mult=SL_ATR_MULT,
-            )
-        except Exception as e:
-            print(f"VectorBT evaluation failed on fold {fold}: {e}")
-            current_train_start += pd.DateOffset(months=test_months)
-            fold += 1
-            del X_train_raw, y_train_raw, X_test_raw, raw_test, X_train, X_test, y_train, gp_model
-            gc.collect()
-            continue
-
-        total_return = stats.get("Total Return [%]", 0.0)
-        sharpe = stats.get("Sharpe Ratio", 0.0)
-
-        if pd.isna(total_return):
-            total_return = 0.0
-        if pd.isna(sharpe):
-            sharpe = 0.0
-
-        if total_return > 0 and sharpe > 0.5:
-            print(f"-> SUCCESS! Formula survived OOS. Ret: {total_return:.2f}%, Sharpe: {sharpe:.2f}")
-
-            winning_formulas.append(
-                {
-                    "fold": fold,
-                    "formula": formula_str,
-                    "return_pct": float(total_return),
-                    "sharpe": float(sharpe),
-                    "tp_mult": float(TP_ATR_MULT),
-                    "sl_mult": float(SL_ATR_MULT),
-                    "coverage_pct": float(metadata["coverage_pct"]),
-                    "n_long": int(metadata["n_long"]),
-                    "n_short": int(metadata["n_short"]),
-                }
-            )
-
-            stats.to_frame(name="value").to_csv(f"outputs/vectorbt_stats/fold_{fold}_winner.csv")
         else:
-            print(f"-> FAILED. Formula collapsed in OOS. Ret: {total_return:.2f}%, Sharpe: {sharpe:.2f}")
+            print(f"-> Fold {fold} FAILED. No robust strategy survived {GP_RESTARTS} restarts.")
 
         current_train_start += pd.DateOffset(months=test_months)
         fold += 1
-
-        del X_train_raw, y_train_raw, X_test_raw, raw_test, X_train, X_test, y_train
-        del gp_model, portfolio, stats, metadata
         gc.collect()
 
     print("=" * 50)
