@@ -291,6 +291,25 @@ def walk_forward_optimization(
                 f"-> Formula Seed: {gp_model.random_state} | "
                 f"Train Score Range: [{train_min:.3f}, {train_max:.3f}]"
             )
+            print(f"-> Logic: {formula_str}")
+
+            train_buy = np.percentile(train_outputs, ENTRY_PCT)
+            train_sell = np.percentile(train_outputs, EXIT_PCT)
+
+            train_long_mask = train_outputs > train_buy
+            train_short_mask = train_outputs < train_sell
+
+            n_train_long = int(train_long_mask.sum())
+            n_train_short = int(train_short_mask.sum())
+            n_train_trades = n_train_long + n_train_short
+
+            long_share = n_train_long / max(n_train_trades, 1)
+            short_share = n_train_short / max(n_train_trades, 1)
+
+            print(
+                f"-> Train signal mix | Longs: {n_train_long} | Shorts: {n_train_short} | "
+                f"Long share: {long_share:.2%} | Short share: {short_share:.2%}"
+            )
         except Exception as e:
             print(f"GP training failed on fold {fold}: {e}")
             current_train_start += pd.DateOffset(months=test_months)

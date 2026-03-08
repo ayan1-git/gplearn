@@ -75,11 +75,19 @@ try:
     PF_MAX = float(config.PF_MAX)
     SHARPE_LAMBDA = float(config.SHARPE_LAMBDA)
     RETURN_LAMBDA = float(config.RETURN_LAMBDA)
+
+    IMBALANCE_LAMBDA = float(getattr(config, "IMBALANCE_LAMBDA", 2.0))
+    ACTIVITY_FLOOR = float(getattr(config, "ACTIVITY_FLOOR", 0.08))
+    ACTIVITY_LAMBDA = float(getattr(config, "ACTIVITY_LAMBDA", 0.5))
 except (ImportError, AttributeError):
     ENTRY_PCT, EXIT_PCT = 80.0, 20.0
     MIN_LONG, MIN_SHORT, MIN_TRADES = 3, 3, 12
     EPS, STD_FLOOR, PF_SMOOTH_K, PF_MAX = 1e-8, 1e-6, 1e-2, 500.0
     SHARPE_LAMBDA, RETURN_LAMBDA = 0.05, 10.0
+
+    IMBALANCE_LAMBDA = 2.0
+    ACTIVITY_FLOOR = 0.08
+    ACTIVITY_LAMBDA = 0.5
 
 
 def _validate_training_inputs(X_train, y_train):
@@ -161,6 +169,10 @@ def _pf_sharpe_fitness(y, y_pred, w):
     n_short = int(short_mask.sum())
     n_trades = n_long + n_short
 
+    imbalance_ratio = abs(n_long - n_short) / max(n_trades, 1)
+    if imbalance_ratio > 0.75:
+        return 0.0
+
     if (n_long < MIN_LONG) or (n_short < MIN_SHORT) or (n_trades < MIN_TRADES):
         return 0.0
 
@@ -197,10 +209,19 @@ def _pf_sharpe_fitness(y, y_pred, w):
     if activity_ratio <= 0.0:
         return 0.0
 
+    imbalance_ratio = abs(n_long - n_short) / max(n_trades, 1)
+    imbalance_penalty = IMBALANCE_LAMBDA * imbalance_ratio
+
+    activity_penalty = 0.0
+    if activity_ratio < ACTIVITY_FLOOR:
+        activity_penalty = ACTIVITY_LAMBDA * (ACTIVITY_FLOOR - activity_ratio)
+
     score = (
         np.log(pf)
         + (SHARPE_LAMBDA * sharpe)
         + (RETURN_LAMBDA * tot_ret)
+        - imbalance_penalty
+        - activity_penalty
     )
 
     return float(score)

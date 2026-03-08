@@ -25,17 +25,17 @@ OB_ATR_MULT = 0.5
 
 # GP Signal Calibration Thresholds
 # These are percentile levels, not raw score values.
-ENTRY_PCT = 80
-EXIT_PCT = 20
+ENTRY_PCT = 72
+EXIT_PCT = 28
 
 # Optional for future multi-restart orchestration in the pipeline.
 # Safe to keep here even if not yet consumed directly.
 GP_RESTARTS = 3
 
 # Fitness Function Constraints
-MIN_LONG = 3
-MIN_SHORT = 3
-MIN_TRADES = 48
+MIN_LONG = 25
+MIN_SHORT = 25
+MIN_TRADES = 100
 
 # Numeric Constraints & Regularization
 EPS = 1e-8
@@ -49,3 +49,8 @@ RETURN_LAMBDA = 2.0
 TRAIN_MONTHS = 30
 TEST_MONTHS = 6
 DATAPATH = "data/Nifty-30min-4year(in).csv"
+
+# --- NEW PENALTY TERMS ---
+IMBALANCE_LAMBDA = 2.0
+ACTIVITY_FLOOR = 0.08
+ACTIVITY_LAMBDA = 0.5
