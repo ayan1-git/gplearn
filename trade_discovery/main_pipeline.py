@@ -327,12 +327,19 @@ def walk_forward_optimization(
 
                 curr_ret = stats.get("Total Return [%]", 0.0)
                 curr_sharpe = stats.get("Sharpe Ratio", 0.0)
+                curr_win_rate = stats.get("Win Rate [%]", 0.0)
+                curr_drawdown = stats.get("Max Drawdown [%]", 0.0)
+                curr_pf = stats.get("Profit Factor", 1.0) # Default to 1.0 if not found
+
                 if pd.isna(curr_ret): curr_ret = 0.0
                 if pd.isna(curr_sharpe): curr_sharpe = 0.0
+                if pd.isna(curr_win_rate): curr_win_rate = 0.0
+                if pd.isna(curr_drawdown): curr_drawdown = 0.0
+                if pd.isna(curr_pf): curr_pf = 1.0
 
                 print(
                     f"   [Seed {seed}] OOS Coverage: {metadata['coverage_pct']:.2f}% | "
-                    f"Ret: {curr_ret:.2f}% | Sharpe: {curr_sharpe:.2f}"
+                    f"Ret: {curr_ret:.2f}% | Sharpe: {curr_sharpe:.2f} | Win: {curr_win_rate:.1f}%"
                 )
 
                 # Winner criteria
@@ -344,11 +351,17 @@ def walk_forward_optimization(
                             "formula": formula_str,
                             "return_pct": float(curr_ret),
                             "sharpe": float(curr_sharpe),
+                            "win_rate": float(curr_win_rate),
+                            "max_drawdown": float(curr_drawdown),
+                            "profit_factor": float(curr_pf),
                             "tp_mult": float(TP_ATR_MULT),
                             "sl_mult": float(SL_ATR_MULT),
                             "coverage_pct": float(metadata["coverage_pct"]),
                             "n_long": int(metadata["n_long"]),
                             "n_short": int(metadata["n_short"]),
+                            "abs_edge": float(cfg.ABSOLUTE_EDGE_FLOOR),
+                            "long_threshold": float(train_buy),
+                            "short_threshold": float(train_sell),
                             "stats": stats.copy()
                         }
                         print(f"   *** New best candidate for Fold {fold} ***")
@@ -378,24 +391,27 @@ def walk_forward_optimization(
         print(f"Found {len(winning_formulas)} robust strategies.")
         log_file = "outputs/winning_formulas.log"
         with open(log_file, "a", encoding="utf-8") as f:
-            f.write("\n" + "=" * 60 + "\n")
+            f.write("\n" + "=" * 80 + "\n")
             f.write(f"Discovery Run: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Data File: {data_path}\n")
             f.write(
-                f"Parameters: TP_MULT={TP_ATR_MULT}, SL_MULT={SL_ATR_MULT}, "
-                f"MAX_HOLD={ORACLE_MAX_HOLD}\n"
+                f"Config: TP={TP_ATR_MULT}, SL={SL_ATR_MULT}, EDGE={cfg.ABSOLUTE_EDGE_FLOOR}, "
+                f"HOLD={ORACLE_MAX_HOLD}\n"
             )
-            f.write("-" * 60 + "\n")
+            f.write("-" * 80 + "\n")
             for w in winning_formulas:
                 f.write(
-                    f"Fold {w['fold']} | Ret: {w['return_pct']:.2f}% | "
-                    f"Sharpe: {w['sharpe']:.2f} | Coverage: {w['coverage_pct']:.2f}%\n"
+                    f"FOLD {w['fold']} | RET: {w['return_pct']:.2f}% | SHARPE: {w['sharpe']:.2f} | "
+                    f"WIN: {w['win_rate']:.1f}% | PF: {w['profit_factor']:.2f} | DD: {w['max_drawdown']:.2f}%\n"
                 )
                 f.write(
-                    f"TP/SL Ratio: {w['tp_mult']}/{w['sl_mult']} | "
-                    f"Signals: L={w['n_long']}, S={w['n_short']}\n"
+                    f"  Thresholds: L={w['long_threshold']:.4f}, S={w['short_threshold']:.4f}\n"
                 )
-                f.write(f"Logic: {w['formula']}\n\n")
+                f.write(
+                    f"  Coverage: {w['coverage_pct']:.2f}% | Trades: L={w['n_long']}, S={w['n_short']}\n"
+                )
+                f.write(f"  Logic: {w['formula']}\n")
+                f.write("-" * 40 + "\n")
     else:
         print("No robust strategies found.")
 

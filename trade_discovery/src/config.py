@@ -8,7 +8,7 @@ ORACLE_MAX_HOLD = 52
 # ASYMMETRIC TRIPLE BARRIER MULTIPLIERS (ATR Units)
 # These define the Take Profit and Stop Loss distances for BOTH
 # target generation and out-of-sample evaluation.
-TP_ATR_MULT = 3.0
+TP_ATR_MULT = 4.0
 SL_ATR_MULT = 1.5
 
 # Execution Frictions
@@ -18,15 +18,15 @@ SLIPPAGE = 0.0001
 # Absolute score floor required before any trade is allowed.
 # Keep this unchanged for the first post-fix validation run, then retune
 # from observed OOS coverage after the stricter evaluator is live.
-ABSOLUTE_EDGE_FLOOR = 0.0040
+ABSOLUTE_EDGE_FLOOR = 0.0080
 
 # Feature Engineering Params
 OB_ATR_MULT = 0.5
 
 # GP Signal Calibration Thresholds
 # These are percentile levels, not raw score values.
-ENTRY_PCT = 72
-EXIT_PCT = 28
+ENTRY_PCT = 80
+EXIT_PCT = 20
 
 # Optional for future multi-restart orchestration in the pipeline.
 # Safe to keep here even if not yet consumed directly.
@@ -46,9 +46,9 @@ SHARPE_LAMBDA = 0.10
 RETURN_LAMBDA = 2.0
 
 # WFO / Data Params
-TRAIN_MONTHS = 30
-TEST_MONTHS = 6
-DATAPATH = "data/Nifty-30min-4year(in).csv"
+TRAIN_MONTHS = 90
+TEST_MONTHS = 30
+DATAPATH = "data/NIFTY 50_30minute 1(in).csv"
 
 # --- NEW PENALTY TERMS ---
 IMBALANCE_LAMBDA = 2.0
