@@ -226,6 +226,7 @@ def _pf_sharpe_fitness(y, y_pred, w):
         + (SHARPE_LAMBDA * sharpe)
         + (RETURN_LAMBDA * tot_ret)
         - activity_penalty
+        - (IMBALANCE_LAMBDA * imbalance_ratio)
     )
 
     return float(score)
