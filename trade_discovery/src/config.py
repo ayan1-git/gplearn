@@ -33,9 +33,9 @@ EXIT_PCT = 10
 GP_RESTARTS = 3
 
 # Fitness Function Constraints
-MIN_LONG = 25
-MIN_SHORT = 25
-MIN_TRADES = 100
+MIN_LONG = 75
+MIN_SHORT = 75
+MIN_TRADES = 180
 
 # Numeric Constraints & Regularization
 EPS = 1e-8
