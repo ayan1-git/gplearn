@@ -25,8 +25,8 @@ OB_ATR_MULT = 0.5
 
 # GP Signal Calibration Thresholds
 # These are percentile levels, not raw score values.
-ENTRY_PCT = 80
-EXIT_PCT = 20
+ENTRY_PCT = 90
+EXIT_PCT = 10
 
 # Optional for future multi-restart orchestration in the pipeline.
 # Safe to keep here even if not yet consumed directly.
