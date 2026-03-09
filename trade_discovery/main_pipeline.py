@@ -343,7 +343,7 @@ def walk_forward_optimization(
                 )
 
                 # Winner criteria
-                if curr_ret > 0 and curr_sharpe > 0.5:
+                if curr_ret > 0 and curr_sharpe > 0.5 and min(metadata["n_long"], metadata["n_short"]) >= 75:
                     if curr_sharpe > best_candidate_sharpe:
                         best_candidate_sharpe = curr_sharpe
                         best_candidate = {
