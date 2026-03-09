@@ -34,18 +34,35 @@ def _if_then(condition, out_true, out_false):
     return np.where(condition > 0.0, out_true, out_false)
 
 
+def _bounded_div(x1, x2):
+    eps = 1e-3
+    clip = 5.0
+
+    x1 = np.asarray(x1, dtype=np.float32)
+    x2 = np.asarray(x2, dtype=np.float32)
+
+    safe_denom = np.where(np.abs(x2) < eps, np.sign(x2) * eps, x2)
+    safe_denom = np.where(safe_denom == 0.0, eps, safe_denom)
+
+    out = x1 / safe_denom
+    out = np.clip(out, -clip, clip)
+
+    return np.where(np.isfinite(out), out, 0.0).astype(np.float32)
+
+
 greater_than = make_function(function=_gt, name="gt", arity=2)
 less_than = make_function(function=_lt, name="lt", arity=2)
 equal_to = make_function(function=_eq, name="eq", arity=2)
 logical_and = make_function(function=_and, name="and", arity=2)
 logical_or = make_function(function=_or, name="or", arity=2)
 if_then = make_function(function=_if_then, name="if_then", arity=3)
+bounded_division = make_function(function=_bounded_div, name="div", arity=2)
 
 trading_functions = [
     "add",
     "sub",
     "mul",
-    "div",
+    bounded_division,   # replaces built-in "div"
     "max",
     "min",
     "abs",
