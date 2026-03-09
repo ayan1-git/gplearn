@@ -62,7 +62,7 @@ trading_functions = [
     "add",
     "sub",
     "mul",
-    bounded_division,   # replaces built-in "div"
+    bounded_division,
     "max",
     "min",
     "abs",
@@ -70,8 +70,6 @@ trading_functions = [
     greater_than,
     less_than,
     equal_to,
-    logical_and,
-    logical_or,
     if_then,
 ]
 
