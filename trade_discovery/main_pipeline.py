@@ -424,6 +424,16 @@ if __name__ == "__main__":
 
     try:
         df_raw, df_features, y_targets = load_and_prepare_data(DATAPATH)
+
+        # --- TEMPORARY FEATURE EXCLUSION ---
+        EXCLUDE_COLS = [
+            "feat_ob_dist_supp", "feat_ob_dist_res", 
+            "feat_ob_supp_touches", "feat_ob_res_touches", 
+            "feat_ob_supp_active", "feat_ob_res_active"
+        ]
+        df_features = df_features.drop(columns=[c for c in EXCLUDE_COLS if c in df_features.columns])
+        # ------------------------------------
+
         walk_forward_optimization(
             df_raw=df_raw,
             df_features=df_features,
