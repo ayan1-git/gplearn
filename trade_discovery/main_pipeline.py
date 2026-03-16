@@ -1,6 +1,7 @@
 import gc
 import importlib
 import os
+from collections import Counter
 from typing import Tuple
 
 import numpy as np
@@ -31,6 +32,14 @@ TRAIN_MONTHS = cfg.TRAIN_MONTHS
 TEST_MONTHS = cfg.TEST_MONTHS
 DATAPATH = cfg.DATAPATH
 GP_RESTARTS = getattr(cfg, "GP_RESTARTS", 1)
+
+
+def extract_features_used(formula_str):
+    """Extract which features from our defined pools appear in the formula."""
+    return tuple(sorted(set(
+        f for f in PASSTHROUGH_FEATURES + SCALE_FEATURES
+        if f in formula_str
+    )))
 
 
 def setup_directories() -> None:
@@ -215,6 +224,8 @@ def walk_forward_optimization(
     current_train_start = start_date
     fold = 1
     winning_formulas = []
+    seed_formulas = []   # carries survivors forward across folds
+
 
     while True:
         train_end = current_train_start + pd.DateOffset(months=train_months)
@@ -282,13 +293,15 @@ def walk_forward_optimization(
 
         best_candidate = None
         best_candidate_sharpe = -999.0
+        best_program = None
+
 
         for restart_idx in range(GP_RESTARTS):
             seed = 42 + restart_idx
             print(f"-> Restart {restart_idx+1}/{GP_RESTARTS} (Seed {seed})")
 
             try:
-                gp_model = train_gp_model(X_train, y_train, random_state=seed)
+                gp_model = train_gp_model(X_train, y_train, random_state=seed, seed_programs=seed_formulas)
                 formula_str = str(gp_model._program)
 
                 train_outputs = gp_model.predict(X_train.values)
@@ -363,6 +376,8 @@ def walk_forward_optimization(
                             "abs_edge": float(cfg.ABSOLUTE_EDGE_FLOOR),
                             "stats": stats.copy()
                         }
+                        best_program = gp_model._program
+
                         print(f"-> SUCCESS! Return: {curr_ret:.2f}% | Sharpe: {curr_sharpe:.2f} | WinRate: {curr_win_rate:.1f}% | MaxDD: {curr_drawdown:.1f}%")
 
             except Exception as e:
@@ -375,6 +390,12 @@ def walk_forward_optimization(
             best_candidate["stats"].to_frame(name="value").to_csv(
                 f"outputs/vectorbt_stats/fold_{fold}_winner.csv"
             )
+            # Seed next fold with survivors from previous fold
+            if best_program is not None:
+                seed_formulas.append(best_program)
+                if len(seed_formulas) > 10:       # keep only top 10 seeds
+                    seed_formulas = seed_formulas[-10:]
+
         else:
             print(f"-> Fold {fold} FAILED. No robust strategy survived {GP_RESTARTS} restarts.")
 
@@ -408,6 +429,18 @@ def walk_forward_optimization(
                 )
                 f.write(f"  Logic: {w['formula']}\n")
                 f.write("-" * 40 + "\n")
+
+            # --- CROSS-FOLD PATTERN ANALYSIS ---
+            feature_usage = Counter(extract_features_used(w['formula']) for w in winning_formulas)
+            
+            summary_header = "\n=== Feature Combinations in Winning Formulas ==="
+            print(summary_header)
+            f.write(summary_header + "\n")
+            
+            for combo, count in feature_usage.most_common(5):
+                line = f"  {count} folds: {combo}"
+                print(line)
+                f.write(line + "\n")
     else:
         print("No robust strategies found.")
 

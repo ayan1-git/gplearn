@@ -93,10 +93,11 @@ trading_metric = make_fitness(
 
 # ─────────────────────────────────────────────────────────────────────────
 
-def train_gp_model(X_train, y_train, random_state=42):
+def train_gp_model(X_train, y_train, random_state=42, seed_programs=None):
     """
     X_train: float32 DataFrame of features
     y_train: float32 Series of triple-barrier Oracle targets (+1, -1, 0)
+    seed_programs: list of _Program objects to carry forward
     """
     print("Initializing GP Engine with Trading Fitness...")
 
@@ -114,7 +115,7 @@ def train_gp_model(X_train, y_train, random_state=42):
         parsimony_coefficient=0.005,
         function_set=trading_functions,
         init_depth=(3, 6),
-        metric=trading_metric,       # ← ONLY MEANINGFUL CHANGE FROM BEFORE
+        metric=trading_metric,
         feature_names=feature_names,
         n_jobs=2,
         verbose=1,
@@ -123,6 +124,22 @@ def train_gp_model(X_train, y_train, random_state=42):
 
     print("Starting Evolution...")
     est_gp.fit(X_train.values, y_train.values)
+
+    # After fit, inject survivors into next generation manually
+    # gplearn exposes _programs list — replace bottom 10% with seeds
+    if seed_programs and len(seed_programs) > 0:
+        import copy
+        n_seeds = min(len(seed_programs), 300)  # inject up to 10% of population
+        print(f"Injecting {n_seeds} seed programs into population...")
+        for i, prog in enumerate(seed_programs[:n_seeds]):
+            try:
+                # Replace programs in the last generation
+                est_gp._programs[-1][i] = copy.deepcopy(prog)
+            except Exception as e:
+                print(f"Failed to inject seed {i}: {e}")
+                pass
+
     print("\nBest Formula Found:")
     print(est_gp._program)
     return est_gp
+
