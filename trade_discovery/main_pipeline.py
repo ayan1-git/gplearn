@@ -18,13 +18,13 @@ logger = logging.getLogger(__name__)
 # GLOBAL CONFIG
 # ---------------------------------------------------------------------------
 ORACLE_MAX_HOLD = 52
-ORACLE_ATR_MULT = 1.4
+ORACLE_ATR_MULT = 1.7
 
 TRAIN_RATIO    = 0.70   # 70% train
 TEST_RATIO     = 0.20   # 20% OOS test  (seen after each generation)
 HOLDOUT_RATIO  = 0.10   # 10% holdout   (touched ONCE at the very end)
 
-MAX_GENERATIONS        = 15    # maximum evolutionary generations
+MAX_GENERATIONS        = 5    # maximum evolutionary generations
 EARLY_STOP_PATIENCE    = 3     # stop if TEST sharpe drops for N consecutive gens
 MIN_SHARPE_TO_SURVIVE  = 1.5   # per-generation survival floor
 MIN_RETURN_TO_SURVIVE  = 2.0

@@ -134,7 +134,8 @@ def train_gp_model(
         init_depth           = (3, 6),
         metric               = 'pearson',
         feature_names        = feature_names,
-        n_jobs               = 2,
+        n_jobs               = 1,
+        stopping_criteria    = 0.0,
         verbose              = 1,
         warm_start           = False,         # managed manually below
         random_state         = fold,          # FIX 1: per-fold diversity
