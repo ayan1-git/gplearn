@@ -32,7 +32,7 @@ EXIT_PCT = 20
 # Safe to keep here even if not yet consumed directly.
 GP_RESTARTS        = 3
 GP_POPULATION_SIZE = 3000
-GP_SEED_FRACTION   = 0.20
+GP_SEED_FRACTION   = 0.15
 GP_MUTATION_BOOST  = 0.15
 GP_GENERATIONS     = 60
 GP_TOURNAMENT_SIZE = 100

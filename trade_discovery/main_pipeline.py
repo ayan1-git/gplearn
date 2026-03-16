@@ -221,24 +221,20 @@ def generational_evolution(
             seed_programs = None
             continue
 
-        train_signals = gp_model.predict(X_train.values)
-        entry_pct = np.percentile(train_signals, 90)
-        exit_pct  = np.percentile(train_signals, 10)
-
-        # --- Threshold collapse guard ---
-        if entry_pct >= 1.0 and exit_pct <= 0.0:
-            logger.warning("Gen %d: binary threshold collapse (Buy=%.2f, Sell=%.2f) — skipping.",
-                           gen, entry_pct, exit_pct)
-            seed_programs = None
-            continue
+        try:
+            import src.config as _cfg
+            LONG_PCT  = int(getattr(_cfg, 'ENTRY_PCT', 80))
+            SHORT_PCT = int(getattr(_cfg, 'EXIT_PCT',  20))
+        except ImportError:
+            LONG_PCT, SHORT_PCT = 80, 20
 
         logger.info("Gen %d | Formula (len=%d): %s", gen, program_len, formula_str)
-        logger.info("Gen %d | Thresholds → Buy: %.4f | Sell: %.4f",
-                    gen, entry_pct, exit_pct)
+        logger.info("Gen %d | Thresholds → Long pct: %d | Short pct: %d",
+                    gen, LONG_PCT, SHORT_PCT)
 
         # --- OOS Evaluation on TEST ---
-        portfolio, stats = evaluate_formula_with_vectorbt(
-            gp_model, X_test, raw_test, entry_pct, exit_pct
+        portfolio, stats, eval_meta = evaluate_formula_with_vectorbt(
+            gp_model, X_test, raw_test, LONG_PCT, SHORT_PCT
         )
         total_return = float(stats.get('Total Return [%]', 0) or 0)
         sharpe       = float(stats.get('Sharpe Ratio',     0) or 0)
@@ -256,8 +252,8 @@ def generational_evolution(
             'sharpe':        sharpe,
             'max_dd':        max_dd,
             'win_rate':      win_rate,
-            'buy_threshold': float(entry_pct),
-            'sell_threshold':float(exit_pct),
+            'buy_threshold': float(LONG_PCT),
+            'sell_threshold':float(SHORT_PCT),
             'survived':      False
         }
 
@@ -323,7 +319,7 @@ def generational_evolution(
     logger.info("=" * 60)
 
     if best_overall_model is not None:
-        h_portfolio, h_stats = evaluate_formula_with_vectorbt(
+        h_portfolio, h_stats, h_meta = evaluate_formula_with_vectorbt(
             best_overall_model, X_holdout, raw_holdout,
             best_overall_meta['buy_threshold'],
             best_overall_meta['sell_threshold']
