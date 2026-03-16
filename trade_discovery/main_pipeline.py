@@ -307,7 +307,7 @@ def walk_forward_optimization(
             f.write("\n" + "=" * 60 + "\n")
             f.write(f"Run       : {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Data      : {data_path}\n")
-            f.write(f"Params    : ATR_MULT={ORACLE_ATR_MULT} | MAX_HOLD={ORACLE_MAX_HOLD}\n")
+            f.write(f"Params    : TP={TP_ATR_MULT} | SL={SL_ATR_MULT} | MAX_HOLD={ORACLE_MAX_HOLD}\n")
             f.write(f"WFO       : train={train_months}m | test={test_months}m | step={step_months}m\n")
             f.write("-" * 60 + "\n")
             for w in winning_formulas:
@@ -315,9 +315,23 @@ def walk_forward_optimization(
                 f.write(f"Hash      : {w['formula_hash']}\n")
                 f.write(f"Thresholds: Buy>{w['buy_threshold']:.4f}  Sell<{w['sell_threshold']:.4f}\n")
                 f.write(f"Logic     : {w['formula']}\n\n")
+            
+            # --- CROSS-FOLD PATTERN ANALYSIS ---
+            feature_usage = Counter(extract_features_used(w['formula']) for w in winning_formulas)
+            
+            summary_header = "\n=== Feature Combinations in Winning Formulas ==="
+            print(summary_header)
+            f.write(summary_header + "\n")
+            
+            for combo, count in feature_usage.most_common(5):
+                line = f"  {count} folds: {combo}"
+                print(line)
+                f.write(line + "\n")
+
         logger.info("Winners written to %s", log_file)
     else:
-        logger.warning("No robust strategies found. Adjust ATR_MULT or provide more data.")
+        logger.warning("No robust strategies found. Adjust multipliers or provide more data.")
+
 
 
 # ---------------------------------------------------------------------------

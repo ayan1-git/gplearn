@@ -9,7 +9,7 @@ ORACLE_MAX_HOLD = 52
 # These define the Take Profit and Stop Loss distances for BOTH
 # target generation and out-of-sample evaluation.
 TP_ATR_MULT = 4.0
-SL_ATR_MULT = 1.5
+SL_ATR_MULT = 1.7
 
 # Execution Frictions
 FEE_PER_SIDE = 0.0003
@@ -51,10 +51,10 @@ SHARPE_LAMBDA = 0.10
 RETURN_LAMBDA = 2.0
 
 # WFO / Data Params
-TRAIN_MONTHS = 36
+TRAIN_MONTHS = 60
 TEST_MONTHS = 6
 WFO_STEP_MONTHS = 1
-DATAPATH = "data/NIFTYNEXT50_30min_4Y.csv"
+DATAPATH = "data/NIFTY 50_30minute 1(in).csv"
 CAUSAL_RANK_WINDOW = 500
 
 # --- NEW PENALTY TERMS ---
