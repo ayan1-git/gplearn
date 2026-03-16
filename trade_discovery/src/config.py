@@ -25,8 +25,8 @@ OB_ATR_MULT = 0.5
 
 # GP Signal Calibration Thresholds
 # These are percentile levels, not raw score values.
-ENTRY_PCT = 90
-EXIT_PCT = 10
+ENTRY_PCT = 80
+EXIT_PCT = 20
 
 # Optional for future multi-restart orchestration in the pipeline.
 # Safe to keep here even if not yet consumed directly.
@@ -48,7 +48,7 @@ RETURN_LAMBDA = 2.0
 # WFO / Data Params
 TRAIN_MONTHS = 36
 TEST_MONTHS = 6
-DATAPATH = "data/NIFTY BANK_30minute(in).csv"
+DATAPATH = "data/NIFTY 50_30minute 1(in).csv"
 
 # --- NEW PENALTY TERMS ---
 IMBALANCE_LAMBDA = 2.0
