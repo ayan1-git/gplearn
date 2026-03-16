@@ -343,7 +343,7 @@ def walk_forward_optimization(
                 )
 
                 # Winner criteria
-                if curr_ret > 0 and curr_sharpe > 0.5 and min(metadata["n_long"], metadata["n_short"]) >= 75 and curr_pf > 1.15 and curr_drawdown < 12:
+                if curr_ret > 0 and curr_sharpe > 0.5 and curr_win_rate > 45 and curr_drawdown < 25:
                     if curr_sharpe > best_candidate_sharpe:
                         best_candidate_sharpe = curr_sharpe
                         best_candidate = {
@@ -352,19 +352,18 @@ def walk_forward_optimization(
                             "return_pct": float(curr_ret),
                             "sharpe": float(curr_sharpe),
                             "win_rate": float(curr_win_rate),
-                            "max_drawdown": float(curr_drawdown),
-                            "profit_factor": float(curr_pf),
+                            "max_dd": float(curr_drawdown),
+                            "buy_threshold": float(train_buy),
+                            "sell_threshold": float(train_sell),
                             "tp_mult": float(TP_ATR_MULT),
                             "sl_mult": float(SL_ATR_MULT),
                             "coverage_pct": float(metadata["coverage_pct"]),
                             "n_long": int(metadata["n_long"]),
                             "n_short": int(metadata["n_short"]),
                             "abs_edge": float(cfg.ABSOLUTE_EDGE_FLOOR),
-                            "long_threshold": float(train_buy),
-                            "short_threshold": float(train_sell),
                             "stats": stats.copy()
                         }
-                        print(f"   *** New best candidate for Fold {fold} ***")
+                        print(f"-> SUCCESS! Return: {curr_ret:.2f}% | Sharpe: {curr_sharpe:.2f} | WinRate: {curr_win_rate:.1f}% | MaxDD: {curr_drawdown:.1f}%")
 
             except Exception as e:
                 print(f"   Restart failed (Seed {seed}): {e}")
@@ -400,12 +399,9 @@ def walk_forward_optimization(
             )
             f.write("-" * 80 + "\n")
             for w in winning_formulas:
+                f.write(f"Fold {w['fold']} | Ret: {w['return_pct']:.2f}% | Sharpe: {w['sharpe']:.2f} | WR: {w.get('win_rate', 0):.1f}% | MaxDD: {w.get('max_dd', 0):.1f}%\n")
                 f.write(
-                    f"FOLD {w['fold']} | RET: {w['return_pct']:.2f}% | SHARPE: {w['sharpe']:.2f} | "
-                    f"WIN: {w['win_rate']:.1f}% | PF: {w['profit_factor']:.2f} | DD: {w['max_drawdown']:.2f}%\n"
-                )
-                f.write(
-                    f"  Thresholds: L={w['long_threshold']:.4f}, S={w['short_threshold']:.4f}\n"
+                    f"  Thresholds: B={w['buy_threshold']:.4f}, S={w['sell_threshold']:.4f}\n"
                 )
                 f.write(
                     f"  Coverage: {w['coverage_pct']:.2f}% | Trades: L={w['n_long']}, S={w['n_short']}\n"
@@ -424,20 +420,6 @@ if __name__ == "__main__":
 
     try:
         df_raw, df_features, y_targets = load_and_prepare_data(DATAPATH)
-
-        # --- TEMPORARY OB-ONLY FEATURE TEST ---
-        OB_ONLY_COLS = [
-            "feat_ob_dist_supp",
-            "feat_ob_dist_res",
-            "feat_ob_supp_touches",
-            "feat_ob_res_touches",
-            "feat_ob_supp_active",
-            "feat_ob_res_active",
-        ]
-        df_features = df_features[[c for c in OB_ONLY_COLS if c in df_features.columns]].copy()
-        print(f"OB-only mode active. Columns: {list(df_features.columns)}")
-        # --------------------------------------
-
         walk_forward_optimization(
             df_raw=df_raw,
             df_features=df_features,

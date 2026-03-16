@@ -18,7 +18,7 @@ SLIPPAGE = 0.0001
 # Absolute score floor required before any trade is allowed.
 # Keep this unchanged for the first post-fix validation run, then retune
 # from observed OOS coverage after the stricter evaluator is live.
-ABSOLUTE_EDGE_FLOOR = 0.0080
+ABSOLUTE_EDGE_FLOOR = 0.01
 
 # Feature Engineering Params
 OB_ATR_MULT = 0.5
@@ -48,7 +48,7 @@ RETURN_LAMBDA = 2.0
 # WFO / Data Params
 TRAIN_MONTHS = 36
 TEST_MONTHS = 6
-DATAPATH = "data/NIFTY 50_30minute 1(in).csv"
+DATAPATH = "data/NIFTY BANK_30minute(in).csv"
 
 # --- NEW PENALTY TERMS ---
 IMBALANCE_LAMBDA = 2.0
