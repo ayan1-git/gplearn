@@ -13,12 +13,14 @@ try:
     DEFAULT_TP_MULT = float(config.TP_ATR_MULT)
     DEFAULT_SL_MULT = float(config.SL_ATR_MULT)
     DEFAULT_ABSOLUTE_EDGE_FLOOR = float(config.ABSOLUTE_EDGE_FLOOR)
+    DEFAULT_RANK_WINDOW = int(getattr(config, "CAUSAL_RANK_WINDOW", 500))
 except (ImportError, AttributeError):
     DEFAULT_FEES = 0.0003
     DEFAULT_SLIPPAGE = 0.0001
     DEFAULT_TP_MULT = 3.0
     DEFAULT_SL_MULT = 1.5
     DEFAULT_ABSOLUTE_EDGE_FLOOR = 0.0010
+    DEFAULT_RANK_WINDOW = 500
 
 
 def _compute_wilder_atr(df_raw: pd.DataFrame, period: int = 14) -> pd.Series:
@@ -83,7 +85,7 @@ def evaluate_formula_with_vectorbt(
     short_pct_level: float,
     fees: float = DEFAULT_FEES,
     slippage: float = DEFAULT_SLIPPAGE,
-    rolling_window: int = 500,
+    rolling_window: int = DEFAULT_RANK_WINDOW,
     absolute_edge_floor: float = DEFAULT_ABSOLUTE_EDGE_FLOOR,
     tp_mult: float = DEFAULT_TP_MULT,
     sl_mult: float = DEFAULT_SL_MULT,

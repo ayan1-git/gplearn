@@ -5,6 +5,20 @@ import numpy as np
 from gplearn.functions import make_function
 from gplearn.genetic import SymbolicRegressor
 
+try:
+    import src.config as config
+    POPULATION_SIZE = getattr(config, "GP_POPULATION_SIZE", 3000)
+    SEED_FRACTION   = getattr(config, "GP_SEED_FRACTION", 0.20)
+    MUTATION_BOOST  = getattr(config, "GP_MUTATION_BOOST", 0.15)
+    GENERATIONS     = getattr(config, "GP_GENERATIONS", 60)
+    TOURNAMENT_SIZE = getattr(config, "GP_TOURNAMENT_SIZE", 100)
+except ImportError:
+    POPULATION_SIZE = 3000
+    SEED_FRACTION   = 0.15
+    MUTATION_BOOST  = 0.15
+    GENERATIONS     = 60
+    TOURNAMENT_SIZE = 100
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -31,12 +45,8 @@ TRADING_FUNCTIONS = [
 ]
 
 # ---------------------------------------------------------------------------
-# CONSTANTS
+# CONSTANTS (Imported from config or defaulted)
 # ---------------------------------------------------------------------------
-POPULATION_SIZE = 3000
-SEED_FRACTION   = 0.20   # top 20% of prior fold seeded into next
-MUTATION_BOOST  = 0.15   # elevated subtree-mutation for seeded individuals
-                          # prevents gene lock-in / premature convergence
 
 
 # ---------------------------------------------------------------------------
@@ -112,8 +122,8 @@ def train_gp_model(
 
     est_gp = SymbolicRegressor(
         population_size      = POPULATION_SIZE,
-        generations          = 60,
-        tournament_size      = 100,
+        generations          = GENERATIONS,
+        tournament_size      = TOURNAMENT_SIZE,
         p_crossover          = 0.6,
         p_subtree_mutation   = subtree_mut,   # elevated when seeding
         p_hoist_mutation     = 0.1,
@@ -138,19 +148,36 @@ def train_gp_model(
         est_gp.generations = 1
         est_gp.fit(X_train.values, y_train.values)
 
-        # Step B: replace weakest n_seeds slots with elite seeds
-        gen0  = est_gp._programs[-1]   # list of _Program objects, len == pop_size
+        # Step B: replace weakest n_seeds slots with MUTATED elite seeds
+        gen0  = est_gp._programs[-1]
         valid = [(i, p) for i, p in enumerate(gen0)
                  if p is not None and hasattr(p, 'fitness_')]
         worst = sorted(valid, key=lambda t: t[1].fitness_)[:n_seeds]
 
+        rng = np.random.RandomState(fold + 1000)
+        n_features = X_train.shape[1]
+
         for slot, (pop_idx, _) in enumerate(worst):
-            gen0[pop_idx] = copy.deepcopy(seed_programs[slot])
+            # Use modulo to cycle through seeds if current fold has fewer seeds than injection quota
+            seed = copy.deepcopy(seed_programs[slot % len(seed_programs)])
 
-        logger.info("[Fold %d] Replaced %d weakest with elite seeds.", fold, len(worst))
+            # Mutate ~20% of terminal nodes before injection
+            # Restores fitness variance to prevent early-stop triggers or gene lock-in
+            if hasattr(seed, 'program') and len(seed.program) > 2:
+                n_mutate = max(1, int(0.20 * len(seed.program)))
+                for _ in range(n_mutate):
+                    idx  = rng.randint(0, len(seed.program))
+                    node = seed.program[idx]
+                    if isinstance(node, int):  # terminal = feature index
+                        seed.program[idx] = rng.randint(0, n_features)
 
-        # Step C: resume remaining 59 generations
-        est_gp.generations = 60
+            gen0[pop_idx] = seed
+
+        logger.info("[Fold %d] Replaced %d weakest with mutated elite seeds.", fold, len(worst))
+
+
+        # Step C: resume remaining generations
+        est_gp.generations = GENERATIONS
         est_gp.warm_start  = True
         est_gp.fit(X_train.values, y_train.values)
 

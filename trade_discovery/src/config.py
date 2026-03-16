@@ -30,7 +30,12 @@ EXIT_PCT = 20
 
 # Optional for future multi-restart orchestration in the pipeline.
 # Safe to keep here even if not yet consumed directly.
-GP_RESTARTS = 3
+GP_RESTARTS        = 3
+GP_POPULATION_SIZE = 3000
+GP_SEED_FRACTION   = 0.20
+GP_MUTATION_BOOST  = 0.15
+GP_GENERATIONS     = 60
+GP_TOURNAMENT_SIZE = 100
 
 # Fitness Function Constraints
 MIN_LONG = 75
@@ -48,7 +53,9 @@ RETURN_LAMBDA = 2.0
 # WFO / Data Params
 TRAIN_MONTHS = 36
 TEST_MONTHS = 6
-DATAPATH = "data/NIFTY 50_30minute 1(in).csv"
+WFO_STEP_MONTHS = 1
+DATAPATH = "data/NIFTYNEXT50_30min_4Y.csv"
+CAUSAL_RANK_WINDOW = 500
 
 # --- NEW PENALTY TERMS ---
 IMBALANCE_LAMBDA = 2.0

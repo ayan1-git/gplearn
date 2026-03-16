@@ -19,10 +19,19 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# GLOBAL CONFIG
+# GLOBAL CONFIG (Imported from src.config)
 # ---------------------------------------------------------------------------
-ORACLE_MAX_HOLD = 96    # 48 h at 30-min bars
-ORACLE_ATR_MULT = 1.4   # must match 02_target_generator.py & 04_vectorbt_evaluator.py
+cfg = importlib.import_module("src.config")
+ORACLE_MAX_HOLD     = cfg.ORACLE_MAX_HOLD
+TP_ATR_MULT         = cfg.TP_ATR_MULT
+SL_ATR_MULT         = cfg.SL_ATR_MULT
+ABSOLUTE_EDGE_FLOOR = cfg.ABSOLUTE_EDGE_FLOOR
+TRAIN_MONTHS        = cfg.TRAIN_MONTHS
+TEST_MONTHS         = cfg.TEST_MONTHS
+WFO_STEP_MONTHS     = cfg.WFO_STEP_MONTHS
+DATAPATH            = cfg.DATAPATH
+ENTRY_PCT           = cfg.ENTRY_PCT
+EXIT_PCT            = cfg.EXIT_PCT
 
 # ---------------------------------------------------------------------------
 # MODULE IMPORTS
@@ -33,9 +42,9 @@ gp      = importlib.import_module("src.03_gp_engine")
 vbteval = importlib.import_module("src.04_vectorbt_evaluator")
 
 calculate_features             = fe.calculate_features
-generate_oracle_targets        = tg.generate_oracle_targets
+generate_tbm_targets           = tg.generate_tbm_targets
 train_gp_model                 = gp.train_gp_model
-extract_elite_programs         = gp.extract_elite_programs   # NEW
+extract_elite_programs         = gp.extract_elite_programs
 hash_formula                   = gp.hash_formula             # NEW
 evaluate_formula_with_vectorbt = vbteval.evaluate_formula_with_vectorbt
 
@@ -80,10 +89,11 @@ def load_and_prepare_data(filepath: str):
     df_features = calculate_features(df_raw, **feature_kwargs)
     logger.info("Features computed. Columns: %s", list(df_features.columns))
 
-    df_features, y_targets = generate_oracle_targets(
+    df_features, y_targets = generate_tbm_targets(
         df_raw, df_features,
-        max_hold=ORACLE_MAX_HOLD,
-        atr_mult=ORACLE_ATR_MULT
+        max_hold = ORACLE_MAX_HOLD,
+        tp_mult  = TP_ATR_MULT,
+        sl_mult  = SL_ATR_MULT
     )
 
     df_raw = df_raw.loc[df_features.index].astype(np.float32)
@@ -131,9 +141,9 @@ def walk_forward_optimization(
     df_raw,
     df_features,
     y_targets,
-    train_months: int = 6,
-    test_months:  int = 6,
-    step_months:  int = 1,      # FIX: advance 1 month → dense rolling folds
+    train_months: int = TRAIN_MONTHS,
+    test_months:  int = TEST_MONTHS,
+    step_months:  int = WFO_STEP_MONTHS,      # FIX: advance from config
     data_path:    str = "Unknown"
 ):
     """
@@ -215,8 +225,8 @@ def walk_forward_optimization(
             )
             formula_str   = str(gp_model._program)
             train_signals = gp_model.predict(X_train.values)
-            entry_pct     = np.percentile(train_signals, 90)
-            exit_pct      = np.percentile(train_signals, 10)
+            entry_pct     = np.percentile(train_signals, ENTRY_PCT)
+            exit_pct      = np.percentile(train_signals, EXIT_PCT)
             logger.info("[Fold %d] Thresholds → Buy: %.4f | Sell: %.4f",
                         fold, entry_pct, exit_pct)
 
@@ -228,7 +238,9 @@ def walk_forward_optimization(
             continue
 
         portfolio, stats, metadata = evaluate_formula_with_vectorbt(
-            gp_model, X_test, raw_test, 90, 10
+            gp_model, X_test, raw_test, ENTRY_PCT, EXIT_PCT,
+            tp_mult = TP_ATR_MULT,
+            sl_mult = SL_ATR_MULT
         )
 
         total_return = float(stats.get('Total Return [%]', 0) or 0)
@@ -314,7 +326,6 @@ def walk_forward_optimization(
 
 if __name__ == "__main__":
     setup_directories()
-    DATAPATH = "data/NIFTYNEXT50_30min_4Y.csv"
 
     if not os.path.exists(DATAPATH):
         raise FileNotFoundError(
@@ -325,9 +336,9 @@ if __name__ == "__main__":
         df_raw, df_features, y_targets = load_and_prepare_data(DATAPATH)
         walk_forward_optimization(
             df_raw, df_features, y_targets,
-            train_months = 30,
-            test_months  = 6,
-            step_months  = 1,     # dense rolling: 1-month advance
+            train_months = TRAIN_MONTHS,
+            test_months  = TEST_MONTHS,
+            step_months  = WFO_STEP_MONTHS,     # dense rolling from config
             data_path    = DATAPATH
         )
     except Exception as exc:
