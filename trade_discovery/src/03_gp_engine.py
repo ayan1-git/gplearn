@@ -142,41 +142,49 @@ def train_gp_model(
 
     if seed_programs:
         n_seeds = min(len(seed_programs), int(SEED_FRACTION * POPULATION_SIZE))
-        logger.info("[Fold %d] Seeding %d elite programs from prior fold.", fold, n_seeds)
+        logger.info("[Fold %d] Will inject %d seeds via _programs pre-population.", fold, n_seeds)
 
-        # Step A: 1-generation bootstrap — allocates _programs[0]
+        # Reduce parsimony during seeded folds to prevent depth-1 collapse
+        # Seeds are already short; parsimony will kill complexity in 1 gen otherwise
+        est_gp.parsimony_coefficient = 0.001   # ← reduced from 0.005
+
+        # Run the full generations cold — but intercept after gen 0
+        # using a single-generation pre-run, inject, then resume
         est_gp.generations = 1
+        est_gp.warm_start  = False
         est_gp.fit(X_train.values, y_train.values)
 
-        # Step B: replace weakest n_seeds slots with MUTATED elite seeds
-        gen0  = est_gp._programs[-1]
-        valid = [(i, p) for i, p in enumerate(gen0)
-                 if p is not None and hasattr(p, 'fitness_')]
-        worst = sorted(valid, key=lambda t: t[1].fitness_)[:n_seeds]
+        gen0        = est_gp._programs[-1]
+        rng         = np.random.RandomState(fold + 1000)
+        n_features  = X_train.shape[1]
 
-        rng = np.random.RandomState(fold + 1000)
-        n_features = X_train.shape[1]
+        valid_gen0  = [(i, p) for i, p in enumerate(gen0)
+                       if p is not None and hasattr(p, 'fitness_')]
+        worst_slots = sorted(valid_gen0, key=lambda t: t[1].fitness_)[:n_seeds]
 
-        for slot, (pop_idx, _) in enumerate(worst):
-            # Use modulo to cycle through seeds if current fold has fewer seeds than injection quota
-            seed = copy.deepcopy(seed_programs[slot % len(seed_programs)])
-
-            # Mutate ~20% of terminal nodes before injection
-            # Restores fitness variance to prevent early-stop triggers or gene lock-in
+        for slot_rank, (pop_idx, _) in enumerate(worst_slots):
+            seed = copy.deepcopy(seed_programs[slot_rank % len(seed_programs)])
+            # Mutate terminals to restore variance
             if hasattr(seed, 'program') and len(seed.program) > 2:
                 n_mutate = max(1, int(0.20 * len(seed.program)))
                 for _ in range(n_mutate):
                     idx  = rng.randint(0, len(seed.program))
                     node = seed.program[idx]
-                    if isinstance(node, int):  # terminal = feature index
+                    if isinstance(node, int):
                         seed.program[idx] = rng.randint(0, n_features)
-
             gen0[pop_idx] = seed
 
-        logger.info("[Fold %d] Replaced %d weakest with mutated elite seeds.", fold, len(worst))
+        # ── KEY FIX: force population depth diversity before resuming ──
+        # Rebuild avg_length signal by ensuring 30% of remaining pop has
+        # depth >= 4 (prevents parsimony-driven collapse to depth-1 in gen 1)
+        random_slots = [i for i, p in enumerate(gen0)
+                        if p is not None and hasattr(p, 'program')
+                        and len(getattr(p, 'program', [])) <= 3
+                        and i not in {idx for idx, _ in worst_slots}]
+        # Leave them as-is — they came from the random cold-start gen0 which
+        # already has avg_length ~28. The issue is parsimony killing them in gen1.
+        # Solution: reduce parsimony_coefficient for seeded folds (done above).
 
-
-        # Step C: resume remaining generations
         est_gp.generations = GENERATIONS
         est_gp.warm_start  = True
         est_gp.fit(X_train.values, y_train.values)

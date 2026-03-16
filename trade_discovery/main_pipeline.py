@@ -217,16 +217,31 @@ def walk_forward_optimization(
 
         try:
             # FIX 1-3: pass seed_programs + fold number
-            gp_model = train_gp_model(
-                X_train,
-                y_train,
-                seed_programs = seed_programs,
-                fold          = fold
-            )
-            formula_str   = str(gp_model._program)
+            gp_model    = train_gp_model(X_train, y_train, seed_programs=seed_programs, fold=fold)
+            formula_str = str(gp_model._program)
+
+            # ── Degenerate formula guard ──
+            program_len = len(gp_model._program.program) if hasattr(gp_model._program, 'program') else 0
+            if program_len > 80:
+                logger.warning("[Fold %d] Formula too complex (length=%d) — likely bloat. Skipping OOS.", fold, program_len)
+                seed_programs = None
+                current_train_start += pd.DateOffset(months=step_months)
+                fold += 1
+                continue
+
             train_signals = gp_model.predict(X_train.values)
             entry_pct     = np.percentile(train_signals, ENTRY_PCT)
             exit_pct      = np.percentile(train_signals, EXIT_PCT)
+
+            # ── Threshold collapse guard ──
+            # Buy>1.0 / Sell<0.0 means formula output is binary {0,1} — not a signal
+            if entry_pct >= 1.0 and exit_pct <= 0.0:
+                logger.warning("[Fold %d] Threshold collapse (Buy=%.2f, Sell=%.2f) — binary output, not a signal. Skipping.", fold, entry_pct, exit_pct)
+                seed_programs = None
+                current_train_start += pd.DateOffset(months=step_months)
+                fold += 1
+                continue
+
             logger.info("[Fold %d] Thresholds → Buy: %.4f | Sell: %.4f",
                         fold, entry_pct, exit_pct)
 
@@ -245,8 +260,9 @@ def walk_forward_optimization(
 
         total_return = float(stats.get('Total Return [%]', 0) or 0)
         sharpe       = float(stats.get('Sharpe Ratio',     0) or 0)
+        max_dd       = float(stats.get('Max Drawdown [%]', 100) or 100)
 
-        if total_return > 0 and sharpe > 0.5:
+        if total_return > 2.0 and sharpe > 1.5 and max_dd < 15.0:
             formula_hash = hash_formula(formula_str)
 
             if formula_hash in seen_hashes:
